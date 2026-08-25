@@ -1,0 +1,24 @@
+<%- include('../partials/header', { titulo: 'Editar usuario' }) %>
+  <h1>Editar usuario</h1>
+  <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
+  <div class="tarjeta">
+    <form class="formulario" method="POST" action="/usuarios/<%= usuario.id_usuario %>?_method=PUT">
+      <div>
+        <label for="nombre_usuario">Nombre de usuario</label>
+        <input type="text" id="nombre_usuario" name="nombre_usuario" value="<%= usuario.nombre_usuario %>" required>
+      </div>
+      <div>
+        <label for="correo">Correo</label>
+        <input type="email" id="correo" name="correo" value="<%= usuario.correo %>" required>
+      </div>
+      <div>
+        <label for="rol">Rol</label>
+        <select id="rol" name="rol">
+          <option value="cliente" <%= usuario.rol === 'cliente' ? 'selected' : '' %>>Cliente</option>
+          <option value="admin" <%= usuario.rol === 'admin' ? 'selected' : '' %>>Administrador</option>
+        </select>
+      </div>
+      <button type="submit" class="btn">Guardar cambios</button>
+    </form>
+  </div>
+<%- include('../partials/footer') %>

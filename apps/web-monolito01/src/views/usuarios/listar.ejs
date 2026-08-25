@@ -1,0 +1,27 @@
+<%- include('../partials/header', { titulo: 'Usuarios' }) %>
+  <h1>Usuarios registrados</h1>
+  <div class="tarjeta">
+    <table>
+      <thead>
+        <tr><th>ID</th><th>Usuario</th><th>Correo</th><th>Rol</th><th>Registro</th><th>Acciones</th></tr>
+      </thead>
+      <tbody>
+        <% usuarios.forEach(u => { %>
+          <tr>
+            <td><%= u.id_usuario %></td>
+            <td><%= u.nombre_usuario %></td>
+            <td><%= u.correo %></td>
+            <td><span class="etiqueta-rol"><%= u.rol %></span></td>
+            <td><%= new Date(u.fecha_registro).toLocaleDateString('es-MX') %></td>
+            <td class="acciones">
+              <a class="btn secundario" href="/usuarios/<%= u.id_usuario %>/editar">Editar</a>
+              <form method="POST" action="/usuarios/<%= u.id_usuario %>?_method=DELETE" onsubmit="return confirm('¿Eliminar este usuario?');">
+                <button type="submit" class="btn peligro">Eliminar</button>
+              </form>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<%- include('../partials/footer') %>

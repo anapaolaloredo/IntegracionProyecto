@@ -1,0 +1,94 @@
+<%- include('../partials/header', { titulo: libro.titulo }) %>
+  <p><a href="/libros">&larr; Volver al catalogo</a></p>
+
+  <div class="tarjeta">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;">
+      <div>
+        <h1 style="margin-bottom:0.2rem;"><%= libro.titulo %></h1>
+        <p style="color:var(--color-texto-suave);margin-top:0;">ISBN: <%= libro.isbn %> &middot; Formato: <%= formato ? formato.nombre_formato : '—' %></p>
+      </div>
+      <% if (usuarioActual.rol === 'admin') { %>
+        <div class="acciones">
+          <a class="btn secundario" href="/libros/<%= libro.id_libro %>/editar">Editar</a>
+          <form method="POST" action="/libros/<%= libro.id_libro %>?_method=DELETE" onsubmit="return confirm('¿Eliminar este libro y todos sus datos asociados?');">
+            <button type="submit" class="btn peligro">Eliminar</button>
+          </form>
+        </div>
+      <% } %>
+    </div>
+
+    <p class="precio" style="font-size:1.3rem;">$<%= Number(libro.precio).toFixed(2) %></p>
+    <p>Año de publicacion: <%= libro.anio_publicacion || 'N/D' %> &middot; Stock disponible: <%= libro.stock %></p>
+
+    <h3>Autores</h3>
+    <div class="chips"><% autores.forEach(a => { %><span class="chip"><%= a.nombre_autor %></span><% }) %></div>
+
+    <h3>Generos</h3>
+    <div class="chips"><% generos.forEach(g => { %><span class="chip"><%= g.nombre_genero %></span><% }) %></div>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Imagenes</h2>
+    <div class="cuadricula">
+      <% imagenes.forEach(im => { %>
+        <div>
+          <img src="<%= im.url_imagen %>" alt="Imagen de <%= libro.titulo %>" style="width:100%;border-radius:10px;">
+          <div style="font-size:0.8rem;color:var(--color-texto-suave);"><%= im.es_portada ? 'Portada' : 'Orden: ' + im.orden %></div>
+          <% if (usuarioActual.rol === 'admin') { %>
+            <form method="POST" action="/libros/<%= libro.id_libro %>/imagenes/<%= im.id_imagen %>?_method=DELETE" onsubmit="return confirm('¿Eliminar esta imagen?');">
+              <button type="submit" class="btn peligro" style="font-size:0.8rem;padding:0.3rem 0.6rem;">Quitar</button>
+            </form>
+          <% } %>
+        </div>
+      <% }) %>
+      <% if (imagenes.length === 0) { %><p>Este libro aun no tiene imagenes.</p><% } %>
+    </div>
+
+    <% if (usuarioActual.rol === 'admin') { %>
+      <h3>Agregar imagen</h3>
+      <form class="formulario" method="POST" action="/libros/<%= libro.id_libro %>/imagenes" enctype="multipart/form-data">
+        <div><label for="imagen">Archivo</label><input type="file" id="imagen" name="imagen" accept="image/*" required></div>
+        <div><label for="orden">Orden</label><input type="number" id="orden" name="orden" value="0"></div>
+        <div><label><input type="checkbox" name="es_portada"> Usar como portada</label></div>
+        <button type="submit" class="btn">Subir imagen</button>
+      </form>
+    <% } %>
+  </div>
+
+  <div class="tarjeta">
+    <h2>Conceptos definidos en este libro</h2>
+    <% if (conceptos.length === 0) { %><p>Aun no hay conceptos definidos para este libro.</p><% } %>
+    <% conceptos.forEach(c => { %>
+      <div style="border-bottom:1px solid var(--color-borde);padding:0.6rem 0;">
+        <strong><%= c.nombre_concepto %></strong>
+        <% if (usuarioActual.rol === 'admin') { %>
+          <form method="POST" action="/libros/<%= libro.id_libro %>/conceptos/<%= c.id_concepto %>?_method=DELETE" style="display:inline;float:right;">
+            <button type="submit" class="btn peligro" style="font-size:0.75rem;padding:0.2rem 0.5rem;">Quitar</button>
+          </form>
+        <% } %>
+        <p style="margin:0.3rem 0 0;"><%= c.definicion %></p>
+      </div>
+    <% }) %>
+
+    <% if (usuarioActual.rol === 'admin') { %>
+      <h3>Definir concepto</h3>
+      <form class="formulario" method="POST" action="/libros/<%= libro.id_libro %>/conceptos">
+        <div>
+          <label for="id_concepto">Concepto (catalogo)</label>
+          <select id="id_concepto" name="id_concepto" required>
+            <option value="" disabled selected>Selecciona un concepto</option>
+            <% catalogoConceptos.forEach(c => { %>
+              <option value="<%= c.id_concepto %>"><%= c.nombre_concepto %></option>
+            <% }) %>
+          </select>
+          <small>¿No existe el concepto? <a href="/conceptos/nuevo">Crealo aqui</a> primero.</small>
+        </div>
+        <div>
+          <label for="definicion">Definicion para este libro</label>
+          <textarea id="definicion" name="definicion" rows="3" required></textarea>
+        </div>
+        <button type="submit" class="btn">Guardar definicion</button>
+      </form>
+    <% } %>
+  </div>
+<%- include('../partials/footer') %>

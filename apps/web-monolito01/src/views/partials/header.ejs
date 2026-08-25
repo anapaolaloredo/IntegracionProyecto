@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof titulo !== 'undefined' ? titulo + ' · Libreria en linea' : 'Libreria en linea' %></title>
+  <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+  <nav class="barra-nav">
+    <div>
+      <span class="marca">📚 Libreria en linea</span>
+      <% if (usuarioActual) { %>
+        <a href="/libros">Catalogo</a>
+        <a href="/autores">Autores</a>
+        <a href="/generos">Generos</a>
+        <a href="/formatos">Formatos</a>
+        <a href="/conceptos">Conceptos</a>
+        <% if (usuarioActual.rol === 'admin') { %>
+          <a href="/usuarios">Usuarios</a>
+        <% } %>
+      <% } %>
+    </div>
+    <div>
+      <% if (usuarioActual) { %>
+        <span>👤 <%= usuarioActual.nombre_usuario %> <span class="etiqueta-rol"><%= usuarioActual.rol %></span></span>
+        <form method="POST" action="/auth/logout" style="display:inline">
+          <button type="submit" class="enlace">Cerrar sesion</button>
+        </form>
+      <% } else { %>
+        <a href="/auth/login">Iniciar sesion</a>
+        <a href="/auth/registro">Registrarse</a>
+      <% } %>
+    </div>
+  </nav>
+  <main class="contenedor">

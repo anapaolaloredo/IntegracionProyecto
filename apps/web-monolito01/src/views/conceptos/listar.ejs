@@ -1,0 +1,33 @@
+<%- include('../partials/header', { titulo: etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1) + 's' }) %>
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h1><%= etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1) %>s</h1>
+    <% if (usuarioActual.rol === 'admin') { %>
+      <a class="btn" href="/<%= vista %>/nuevo">+ Nuevo <%= etiqueta %></a>
+    <% } %>
+  </div>
+  <div class="tarjeta">
+    <% if (items.length === 0) { %>
+      <p>Aun no hay <%= etiqueta %>s registrados.</p>
+    <% } else { %>
+      <table>
+        <thead><tr><th>ID</th><th>Nombre</th><% if (usuarioActual.rol === 'admin') { %><th>Acciones</th><% } %></tr></thead>
+        <tbody>
+          <% items.forEach(item => { %>
+            <tr>
+              <td><%= item[idCampo] %></td>
+              <td><%= item[campoNombre] %></td>
+              <% if (usuarioActual.rol === 'admin') { %>
+                <td class="acciones">
+                  <a class="btn secundario" href="/<%= vista %>/<%= item[idCampo] %>/editar">Editar</a>
+                  <form method="POST" action="/<%= vista %>/<%= item[idCampo] %>?_method=DELETE" onsubmit="return confirm('¿Eliminar este <%= etiqueta %>?');">
+                    <button type="submit" class="btn peligro">Eliminar</button>
+                  </form>
+                </td>
+              <% } %>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+<%- include('../partials/footer') %>

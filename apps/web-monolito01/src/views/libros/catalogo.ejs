@@ -1,0 +1,34 @@
+<%- include('../partials/header', { titulo: 'Catalogo' }) %>
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h1>Catalogo de libros</h1>
+    <% if (usuarioActual.rol === 'admin') { %>
+      <a class="btn" href="/libros/nuevo">+ Nuevo libro</a>
+    <% } %>
+  </div>
+
+  <% if (libros.length === 0) { %>
+    <div class="tarjeta">Aun no hay libros registrados.</div>
+  <% } else { %>
+    <div class="cuadricula">
+      <% libros.forEach(l => { %>
+        <a href="/libros/<%= l.id_libro %>" class="tarjeta libro-tarjeta" style="color:inherit;text-decoration:none;">
+          <% if (l.portada) { %>
+            <img src="<%= l.portada %>" alt="Portada de <%= l.titulo %>">
+          <% } else { %>
+            <div class="placeholder">Sin imagen</div>
+          <% } %>
+          <h3 style="margin:0.6rem 0 0.2rem;"><%= l.titulo %></h3>
+          <div style="color:var(--color-texto-suave);font-size:0.85rem;"><%= l.autores || 'Autor desconocido' %></div>
+          <div class="chips">
+            <span class="chip"><%= l.nombre_formato %></span>
+            <% (l.generos || '').split(', ').filter(Boolean).slice(0,2).forEach(g => { %>
+              <span class="chip"><%= g %></span>
+            <% }) %>
+          </div>
+          <div class="precio">$<%= Number(l.precio).toFixed(2) %></div>
+          <div style="font-size:0.8rem;color:var(--color-texto-suave);">Stock: <%= l.stock %></div>
+        </a>
+      <% }) %>
+    </div>
+  <% } %>
+<%- include('../partials/footer') %>

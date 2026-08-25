@@ -1,0 +1,36 @@
+<%- include('../partials/header', { titulo: 'Nuevo libro' }) %>
+  <h1>Registrar nuevo libro</h1>
+  <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
+  <div class="tarjeta">
+    <form class="formulario" method="POST" action="/libros">
+      <div><label for="isbn">ISBN</label><input type="text" id="isbn" name="isbn" maxlength="13" value="<%= valores.isbn || '' %>" required></div>
+      <div><label for="titulo">Titulo</label><input type="text" id="titulo" name="titulo" value="<%= valores.titulo || '' %>" required></div>
+      <div><label for="anio_publicacion">Año de publicacion</label><input type="number" id="anio_publicacion" name="anio_publicacion" value="<%= valores.anio_publicacion || '' %>"></div>
+      <div><label for="precio">Precio</label><input type="number" step="0.01" min="0" id="precio" name="precio" value="<%= valores.precio || '' %>" required></div>
+      <div><label for="stock">Stock</label><input type="number" min="0" id="stock" name="stock" value="<%= valores.stock || 0 %>"></div>
+      <div>
+        <label for="id_formato">Formato</label>
+        <select id="id_formato" name="id_formato" required>
+          <option value="" disabled selected>Selecciona un formato</option>
+          <% formatos.forEach(f => { %><option value="<%= f.id_formato %>"><%= f.nombre_formato %></option><% }) %>
+        </select>
+      </div>
+      <div>
+        <label for="autores">Autores (Ctrl/Cmd + clic para varios)</label>
+        <select id="autores" name="autores" multiple required>
+          <% autores.forEach(a => { %><option value="<%= a.id_autor %>"><%= a.nombre_autor %></option><% }) %>
+        </select>
+      </div>
+      <div>
+        <label for="generos">Generos (Ctrl/Cmd + clic para varios)</label>
+        <select id="generos" name="generos" multiple required>
+          <% generos.forEach(g => { %><option value="<%= g.id_genero %>"><%= g.nombre_genero %></option><% }) %>
+        </select>
+      </div>
+      <p style="font-size:0.85rem;color:var(--color-texto-suave);">
+        Los conceptos y las imagenes se agregan despues de crear el libro, desde su pagina de detalle.
+      </p>
+      <button type="submit" class="btn">Guardar libro</button>
+    </form>
+  </div>
+<%- include('../partials/footer') %>

@@ -1,0 +1,13 @@
+<%- include('../partials/header', { titulo: 'Editar ' + etiqueta }) %>
+  <h1>Editar <%= etiqueta %></h1>
+  <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
+  <div class="tarjeta">
+    <form class="formulario" method="POST" action="/<%= vista %>/<%= item[idCampo] %>?_method=PUT">
+      <div>
+        <label for="<%= campoNombre %>">Nombre</label>
+        <input type="text" id="<%= campoNombre %>" name="<%= campoNombre %>" value="<%= item[campoNombre] %>" required>
+      </div>
+      <button type="submit" class="btn">Guardar cambios</button>
+    </form>
+  </div>
+<%- include('../partials/footer') %>

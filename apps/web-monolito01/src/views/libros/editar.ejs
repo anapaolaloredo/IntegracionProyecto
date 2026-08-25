@@ -1,0 +1,38 @@
+<%- include('../partials/header', { titulo: 'Editar libro' }) %>
+  <h1>Editar libro</h1>
+  <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
+  <div class="tarjeta">
+    <form class="formulario" method="POST" action="/libros/<%= libro.id_libro %>?_method=PUT">
+      <div><label>ISBN</label><input type="text" value="<%= libro.isbn %>" disabled></div>
+      <div><label for="titulo">Titulo</label><input type="text" id="titulo" name="titulo" value="<%= libro.titulo %>" required></div>
+      <div><label for="anio_publicacion">Año de publicacion</label><input type="number" id="anio_publicacion" name="anio_publicacion" value="<%= libro.anio_publicacion || '' %>"></div>
+      <div><label for="precio">Precio</label><input type="number" step="0.01" min="0" id="precio" name="precio" value="<%= libro.precio %>" required></div>
+      <div><label for="stock">Stock</label><input type="number" min="0" id="stock" name="stock" value="<%= libro.stock %>"></div>
+      <div>
+        <label for="id_formato">Formato</label>
+        <select id="id_formato" name="id_formato" required>
+          <% formatos.forEach(f => { %>
+            <option value="<%= f.id_formato %>" <%= f.id_formato === libro.id_formato ? 'selected' : '' %>><%= f.nombre_formato %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label for="autores">Autores (Ctrl/Cmd + clic para varios)</label>
+        <select id="autores" name="autores" multiple required>
+          <% autores.forEach(a => { %>
+            <option value="<%= a.id_autor %>" <%= idsAutoresLibro.includes(a.id_autor) ? 'selected' : '' %>><%= a.nombre_autor %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label for="generos">Generos (Ctrl/Cmd + clic para varios)</label>
+        <select id="generos" name="generos" multiple required>
+          <% generos.forEach(g => { %>
+            <option value="<%= g.id_genero %>" <%= idsGenerosLibro.includes(g.id_genero) ? 'selected' : '' %>><%= g.nombre_genero %></option>
+          <% }) %>
+        </select>
+      </div>
+      <button type="submit" class="btn">Guardar cambios</button>
+    </form>
+  </div>
+<%- include('../partials/footer') %>

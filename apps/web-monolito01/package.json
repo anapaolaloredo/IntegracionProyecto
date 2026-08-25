@@ -1,0 +1,22 @@
+{
+  "name": "web-monolito01",
+  "version": "1.0.0",
+  "description": "Aplicacion web monolitica (Node.js + PostgreSQL + EJS) para gestion de una libreria en linea. Renderizado del lado del servidor, sin APIs REST/GraphQL/SOAP.",
+  "main": "src/app.js",
+  "private": true,
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "node --watch src/app.js"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "connect-pg-simple": "^9.0.1",
+    "dotenv": "^16.4.5",
+    "ejs": "^3.1.10",
+    "express": "^4.19.2",
+    "express-session": "^1.18.0",
+    "method-override": "^3.0.0",
+    "multer": "^2.0.1",
+    "pg": "^8.12.0"
+  }
+}
