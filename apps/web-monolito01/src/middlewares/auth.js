@@ -9,7 +9,7 @@ function inyectarUsuario(req, res, next) {
 function requerirSesion(req, res, next) {
   if (!req.session.usuario) {
     req.session.mensajeError = 'Debes iniciar sesion para continuar.';
-    return res.redirect('/auth/login');
+    return res.redirect(`${res.locals.basePath}/auth/login`);
   }
   next();
 }
@@ -26,7 +26,7 @@ function requerirAdmin(req, res, next) {
 
 function redirigirSiAutenticado(req, res, next) {
   if (req.session.usuario) {
-    return res.redirect('/libros');
+    return res.redirect(`${res.locals.basePath}/libros`);
   }
   next();
 }

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ===================================================================
+  Online Library — XML data design
+  ===================================================================
+  Source of truth for the structure: /data/library_schema.sql
+  Source of truth for the values:    /data/library_data.sql
+
+  Mapping from the relational (4NF) model to this XML tree:
+    - isbn                     -> attribute "isbn" on <book>
+                                   (isbn is the natural business key /
+                                   UNIQUE column on table "libros")
+    - titulo                   -> <title>
+    - anio_publicacion         -> <publicationYear>
+    - precio                   -> <price currency="MXN">
+    - stock                    -> <stock>
+    - id_formato -> formatos   -> <format>  (1:N libro -> formato)
+    - libro_autor (N:M)        -> <authors><author>...</author></authors>
+    - libro_genero (N:M)       -> <genres><genre>...</genre></genres>
+    - imagenes_libro (1:N)     -> <images><image cover="true|false">...
+    - libro_concepto (N:M with -> <concepts><concept name="...">
+      its own "definicion")         <definition>...</definition></concept>
+
+  Multivalued, independent attributes (author, genre, image — see the
+  MVD analysis at the top of library_schema.sql) are each modeled as
+  their own repeatable child collection, mirroring the bridge tables
+  libro_autor / libro_genero / imagenes_libro. The book-concept pair
+  keeps its own "definition" text, mirroring table libro_concepto,
+  where the same concept can be defined differently per book.
+  ===================================================================
+-->
+<library>
+
+  <book isbn="9780307474728">
+    <title>One Hundred Years of Solitude</title>
+    <authors>
+      <author>Gabriel Garcia Marquez</author>
+    </authors>
+    <publicationYear>1967</publicationYear>
+    <genres>
+      <genre>Magical Realism</genre>
+    </genres>
+    <price currency="MXN">299.99</price>
+    <stock>12</stock>
+    <format>Hardcover</format>
+    <images>
+      <image cover="true">https://covers.openlibrary.org/b/isbn/9780307474728-L.jpg</image>
+    </images>
+    <concepts>
+      <concept name="Magical realism (literary device)">
+        <definition>In this novel the supernatural (flower rains, ascensions to heaven) is narrated with the same tone as the Buendia family's everyday events.</definition>
+      </concept>
+    </concepts>
+  </book>
+
+  <book isbn="9788420633343">
+    <title>The Aleph</title>
+    <authors>
+      <author>Jorge Luis Borges</author>
+    </authors>
+    <publicationYear>1949</publicationYear>
+    <genres>
+      <genre>Magical Realism</genre>
+      <genre>Fantasy</genre>
+    </genres>
+    <price currency="MXN">189.50</price>
+    <stock>8</stock>
+    <format>Paperback</format>
+    <images>
+      <image cover="true">https://covers.openlibrary.org/b/isbn/9788420633343-L.jpg</image>
+    </images>
+    <concepts>
+      <concept name="Magical realism (literary device)">
+        <definition>Borges blends impossible objects (the Aleph, which contains every point in the universe) with the everyday life of Buenos Aires.</definition>
+      </concept>
+    </concepts>
+  </book>
+
+  <book isbn="9788401352836">
+    <title>The House of the Spirits</title>
+    <authors>
+      <author>Isabel Allende</author>
+    </authors>
+    <publicationYear>1982</publicationYear>
+    <genres>
+      <genre>Magical Realism</genre>
+      <genre>Historical Novel</genre>
+    </genres>
+    <price currency="MXN">249.00</price>
+    <stock>10</stock>
+    <format>Paperback</format>
+    <images>
+      <image cover="true">https://covers.openlibrary.org/b/isbn/9788401352836-L.jpg</image>
+    </images>
+    <concepts/>
+  </book>
+
+  <book isbn="9780451524935">
+    <title>1984</title>
+    <authors>
+      <author>George Orwell</author>
+    </authors>
+    <publicationYear>1949</publicationYear>
+    <genres>
+      <genre>Science Fiction</genre>
+      <genre>Dystopia</genre>
+    </genres>
+    <price currency="MXN">179.90</price>
+    <stock>20</stock>
+    <format>Paperback</format>
+    <images>
+      <image cover="true">https://covers.openlibrary.org/b/isbn/9780451524935-L.jpg</image>
+    </images>
+    <concepts>
+      <concept name="Dystopia">
+        <definition>Oceania is a totalitarian state that monitors and controls its citizens' thoughts through Big Brother and the Thought Police.</definition>
+      </concept>
+      <concept name="Political allegory">
+        <definition>The novel works as a critique of 20th-century totalitarianism (Stalinism, fascism) through the fiction of Oceania.</definition>
+      </concept>
+    </concepts>
+  </book>
+
+  <book isbn="9780060850524">
+    <title>Brave New World</title>
+    <authors>
+      <author>Aldous Huxley</author>
+    </authors>
+    <publicationYear>1932</publicationYear>
+    <genres>
+      <genre>Science Fiction</genre>
+      <genre>Dystopia</genre>
+    </genres>
+    <price currency="MXN">169.90</price>
+    <stock>15</stock>
+    <format>Digital (ePub)</format>
+    <images>
+      <image cover="true">https://covers.openlibrary.org/b/isbn/9780060850524-L.jpg</image>
+    </images>
+    <concepts>
+      <concept name="Dystopia">
+        <definition>Huxley's World State controls the population through pleasure, genetic conditioning, and the drug soma, rather than direct repression.</definition>
+      </concept>
+    </concepts>
+  </book>
+
+  <book isbn="9780618640157">
+    <title>The Lord of the Rings</title>
+    <authors>
+      <author>J.R.R. Tolkien</author>
+    </authors>
+    <publicationYear>1954</publicationYear>
+    <genres>
+      <genre>Fantasy</genre>
+    </genres>
+    <price currency="MXN">399.00</price>
+    <stock>6</stock>
+    <format>Hardcover</format>
+    <images>
+      <image cover="true">https://covers.openlibrary.org/b/isbn/9780618640157-L.jpg</image>
+    </images>
+    <concepts>
+      <concept name="Secondary world (worldbuilding)">
+        <definition>Middle-earth is a complete fictional world with its own geography, languages, peoples, and history, built by Tolkien over decades.</definition>
+      </concept>
+    </concepts>
+  </book>
+
+  <book isbn="9780141439471">
+    <title>Frankenstein</title>
+    <authors>
+      <author>Mary Shelley</author>
+    </authors>
+    <publicationYear>1818</publicationYear>
+    <genres>
+      <genre>Science Fiction</genre>
+      <genre>Fantasy</genre>
+    </genres>
+    <price currency="MXN">149.00</price>
+    <stock>9</stock>
+    <format>Digital (ePub)</format>
+    <images>
+      <image cover="true">https://covers.openlibrary.org/b/isbn/9780141439471-L.jpg</image>
+    </images>
+    <concepts>
+      <concept name="Unreliable narrator">
+        <definition>The story is presented through letters and Victor Frankenstein's own account, whose version of events the reader must question.</definition>
+      </concept>
+    </concepts>
+  </book>
+
+</library>

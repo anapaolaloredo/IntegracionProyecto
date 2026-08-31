@@ -40,7 +40,7 @@ const AuthController = {
       });
 
       req.session.usuario = { id_usuario: id, nombre_usuario, correo, rol };
-      res.redirect('/libros');
+      res.redirect(`${res.locals.basePath}/libros`);
     } catch (err) {
       res.status(400).render('auth/registro', {
         error: err.message,
@@ -69,14 +69,15 @@ const AuthController = {
         correo: usuario.correo,
         rol: usuario.rol
       };
-      res.redirect('/libros');
+      res.redirect(`${res.locals.basePath}/libros`);
     } catch (err) {
       res.status(401).render('auth/login', { error: err.message });
     }
   },
 
   cerrarSesion(req, res) {
-    req.session.destroy(() => res.redirect('/auth/login'));
+    const basePath = res.locals.basePath;
+    req.session.destroy(() => res.redirect(`${basePath}/auth/login`));
   }
 };
 

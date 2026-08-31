@@ -6,7 +6,7 @@ const crearCatalogoRoutes = require('./catalogoRoutes');
 const crearCatalogoController = require('../controllers/catalogoController');
 const { FormatoModel, GeneroModel, AutorModel, ConceptoModel } = require('../models/catalogoModel');
 
-router.get('/', requerirSesion, (req, res) => res.redirect('/libros'));
+router.get('/', requerirSesion, (req, res) => res.redirect(`${res.locals.basePath}/libros`));
 
 router.use('/auth', require('./auth'));
 router.use('/libros', require('./libros'));

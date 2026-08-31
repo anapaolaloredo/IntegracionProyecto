@@ -20,7 +20,7 @@ function crearCatalogoController(modelo, vista, campoNombre, etiqueta, idCampo) 
       try {
         if (!nombre || !nombre.trim()) throw new Error(`El nombre de ${etiqueta} es obligatorio.`);
         await modelo.crear(nombre.trim());
-        res.redirect(`/${vista}`);
+        res.redirect(`${res.locals.basePath}/${vista}`);
       } catch (err) {
         res.status(400).render(`${vista}/crear`, { error: err.message, etiqueta, vista, campoNombre, valores: req.body });
       }
@@ -39,7 +39,7 @@ function crearCatalogoController(modelo, vista, campoNombre, etiqueta, idCampo) 
       try {
         if (!nombre || !nombre.trim()) throw new Error(`El nombre de ${etiqueta} es obligatorio.`);
         await modelo.actualizar(id, nombre.trim());
-        res.redirect(`/${vista}`);
+        res.redirect(`${res.locals.basePath}/${vista}`);
       } catch (err) {
         const item = { [idCampoReal]: id, [campoNombre]: nombre };
         res.status(400).render(`${vista}/editar`, { item, error: err.message, etiqueta, vista, campoNombre, idCampo: idCampoReal });
@@ -52,7 +52,7 @@ function crearCatalogoController(modelo, vista, campoNombre, etiqueta, idCampo) 
       } catch (err) {
         req.session.mensajeError = 'No se pudo eliminar: probablemente esta en uso por uno o mas libros.';
       }
-      res.redirect(`/${vista}`);
+      res.redirect(`${res.locals.basePath}/${vista}`);
     }
   };
 }

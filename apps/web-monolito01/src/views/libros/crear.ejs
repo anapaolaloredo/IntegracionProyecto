@@ -2,7 +2,7 @@
   <h1>Registrar nuevo libro</h1>
   <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
   <div class="tarjeta">
-    <form class="formulario" method="POST" action="/libros">
+    <form class="formulario" method="POST" action="<%= basePath %>/libros">
       <div><label for="isbn">ISBN</label><input type="text" id="isbn" name="isbn" maxlength="13" value="<%= valores.isbn || '' %>" required></div>
       <div><label for="titulo">Titulo</label><input type="text" id="titulo" name="titulo" value="<%= valores.titulo || '' %>" required></div>
       <div><label for="anio_publicacion">Año de publicacion</label><input type="number" id="anio_publicacion" name="anio_publicacion" value="<%= valores.anio_publicacion || '' %>"></div>

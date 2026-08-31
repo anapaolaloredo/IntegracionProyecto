@@ -2,7 +2,7 @@
   <div style="display:flex;justify-content:space-between;align-items:center;">
     <h1>Catalogo de libros</h1>
     <% if (usuarioActual.rol === 'admin') { %>
-      <a class="btn" href="/libros/nuevo">+ Nuevo libro</a>
+      <a class="btn" href="<%= basePath %>/libros/nuevo">+ Nuevo libro</a>
     <% } %>
   </div>
 
@@ -11,9 +11,9 @@
   <% } else { %>
     <div class="cuadricula">
       <% libros.forEach(l => { %>
-        <a href="/libros/<%= l.id_libro %>" class="tarjeta libro-tarjeta" style="color:inherit;text-decoration:none;">
+        <a href="<%= basePath %>/libros/<%= l.id_libro %>" class="tarjeta libro-tarjeta" style="color:inherit;text-decoration:none;">
           <% if (l.portada) { %>
-            <img src="<%= l.portada %>" alt="Portada de <%= l.titulo %>">
+            <img src="<%= basePath %><%= l.portada %>" alt="Portada de <%= l.titulo %>">
           <% } else { %>
             <div class="placeholder">Sin imagen</div>
           <% } %>

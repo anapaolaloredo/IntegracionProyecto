@@ -2,7 +2,7 @@
   <h1>Editar libro</h1>
   <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
   <div class="tarjeta">
-    <form class="formulario" method="POST" action="/libros/<%= libro.id_libro %>?_method=PUT">
+    <form class="formulario" method="POST" action="<%= basePath %>/libros/<%= libro.id_libro %>?_method=PUT">
       <div><label>ISBN</label><input type="text" value="<%= libro.isbn %>" disabled></div>
       <div><label for="titulo">Titulo</label><input type="text" id="titulo" name="titulo" value="<%= libro.titulo %>" required></div>
       <div><label for="anio_publicacion">Año de publicacion</label><input type="number" id="anio_publicacion" name="anio_publicacion" value="<%= libro.anio_publicacion || '' %>"></div>

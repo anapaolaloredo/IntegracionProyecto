@@ -14,8 +14,8 @@
             <td><span class="etiqueta-rol"><%= u.rol %></span></td>
             <td><%= new Date(u.fecha_registro).toLocaleDateString('es-MX') %></td>
             <td class="acciones">
-              <a class="btn secundario" href="/usuarios/<%= u.id_usuario %>/editar">Editar</a>
-              <form method="POST" action="/usuarios/<%= u.id_usuario %>?_method=DELETE" onsubmit="return confirm('¿Eliminar este usuario?');">
+              <a class="btn secundario" href="<%= basePath %>/usuarios/<%= u.id_usuario %>/editar">Editar</a>
+              <form method="POST" action="<%= basePath %>/usuarios/<%= u.id_usuario %>?_method=DELETE" onsubmit="return confirm('¿Eliminar este usuario?');">
                 <button type="submit" class="btn peligro">Eliminar</button>
               </form>
             </td>

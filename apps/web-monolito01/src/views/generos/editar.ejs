@@ -2,7 +2,7 @@
   <h1>Editar <%= etiqueta %></h1>
   <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
   <div class="tarjeta">
-    <form class="formulario" method="POST" action="/<%= vista %>/<%= item[idCampo] %>?_method=PUT">
+    <form class="formulario" method="POST" action="<%= basePath %>/<%= vista %>/<%= item[idCampo] %>?_method=PUT">
       <div>
         <label for="<%= campoNombre %>">Nombre</label>
         <input type="text" id="<%= campoNombre %>" name="<%= campoNombre %>" value="<%= item[campoNombre] %>" required>

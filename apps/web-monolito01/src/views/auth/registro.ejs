@@ -2,7 +2,7 @@
   <div class="tarjeta" style="max-width:420px;margin:2rem auto;">
     <h1>Crear cuenta</h1>
     <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
-    <form class="formulario" method="POST" action="/auth/registro">
+    <form class="formulario" method="POST" action="<%= basePath %>/auth/registro">
       <div>
         <label for="nombre_usuario">Nombre de usuario</label>
         <input type="text" id="nombre_usuario" name="nombre_usuario" value="<%= valores.nombre_usuario || '' %>" required>
@@ -21,6 +21,6 @@
       </div>
       <button type="submit" class="btn">Registrarme</button>
     </form>
-    <p style="margin-top:1rem;">¿Ya tienes cuenta? <a href="/auth/login">Inicia sesion</a></p>
+    <p style="margin-top:1rem;">¿Ya tienes cuenta? <a href="<%= basePath %>/auth/login">Inicia sesion</a></p>
   </div>
 <%- include('../partials/footer') %>

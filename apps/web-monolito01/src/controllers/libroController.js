@@ -53,7 +53,7 @@ const LibroController = {
       for (const idAutor of idsAutores) await LibroModel.asociarAutor(idLibro, idAutor);
       for (const idGenero of idsGeneros) await LibroModel.asociarGenero(idLibro, idGenero);
 
-      res.redirect(`/libros/${idLibro}`);
+      res.redirect(`${res.locals.basePath}/libros/${idLibro}`);
     } catch (err) {
       const [formatos, generos, autores, conceptos] = await Promise.all([
         FormatoModel.listar(), GeneroModel.listar(), AutorModel.listar(), ConceptoModel.listar()
@@ -102,15 +102,15 @@ const LibroController = {
       for (const idGenero of idsGeneros) if (!generosActuales.includes(String(idGenero))) await LibroModel.asociarGenero(id, idGenero);
       for (const idGenero of generosActuales) if (!idsGeneros.includes(idGenero)) await LibroModel.desasociarGenero(id, idGenero);
 
-      res.redirect(`/libros/${id}`);
+      res.redirect(`${res.locals.basePath}/libros/${id}`);
     } catch (err) {
-      res.redirect(`/libros/${id}/editar`);
+      res.redirect(`${res.locals.basePath}/libros/${id}/editar`);
     }
   },
 
   async eliminar(req, res) {
     await LibroModel.eliminar(req.params.id);
-    res.redirect('/libros');
+    res.redirect(`${res.locals.basePath}/libros`);
   },
 
   // ---- imagenes ----
@@ -118,12 +118,12 @@ const LibroController = {
     const { id } = req.params;
     if (!req.file) {
       req.session.mensajeError = 'Selecciona un archivo de imagen valido.';
-      return res.redirect(`/libros/${id}`);
+      return res.redirect(`${res.locals.basePath}/libros/${id}`);
     }
     const urlPublica = `/uploads/${req.file.filename}`;
     const esPortada = req.body.es_portada === 'on';
     await LibroModel.agregarImagen(id, urlPublica, Number(req.body.orden) || 0, esPortada);
-    res.redirect(`/libros/${id}`);
+    res.redirect(`${res.locals.basePath}/libros/${id}`);
   },
 
   async eliminarImagen(req, res) {
@@ -135,7 +135,7 @@ const LibroController = {
       const rutaArchivo = path.join(__dirname, '..', '..', 'public', imagen.url_imagen);
       fs.unlink(rutaArchivo, () => {});
     }
-    res.redirect(`/libros/${id}`);
+    res.redirect(`${res.locals.basePath}/libros/${id}`);
   },
 
   // ---- conceptos definidos por libro ----
@@ -145,13 +145,13 @@ const LibroController = {
     if (id_concepto && definicion && definicion.trim()) {
       await LibroModel.definirConcepto(id, id_concepto, definicion.trim());
     }
-    res.redirect(`/libros/${id}`);
+    res.redirect(`${res.locals.basePath}/libros/${id}`);
   },
 
   async eliminarConcepto(req, res) {
     const { id, idConcepto } = req.params;
     await LibroModel.eliminarConceptoDeLibro(id, idConcepto);
-    res.redirect(`/libros/${id}`);
+    res.redirect(`${res.locals.basePath}/libros/${id}`);
   }
 };
 

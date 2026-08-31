@@ -19,7 +19,7 @@ const UsuarioController = {
       // No permitir degradar al unico admin desde este formulario si es
       // el usuario en sesion, para no perder acceso administrativo.
       await UsuarioModel.actualizar(id, { nombreUsuario: nombre_usuario, correo, rol });
-      res.redirect('/usuarios');
+      res.redirect(`${res.locals.basePath}/usuarios`);
     } catch (err) {
       const usuario = await UsuarioModel.obtenerPorId(id);
       res.status(400).render('usuarios/editar', { usuario, error: 'No fue posible actualizar: ' + err.message });
@@ -30,10 +30,10 @@ const UsuarioController = {
     const { id } = req.params;
     if (String(req.session.usuario.id_usuario) === String(id)) {
       req.session.mensajeError = 'No puedes eliminar tu propia cuenta mientras tienes la sesion activa.';
-      return res.redirect('/usuarios');
+      return res.redirect(`${res.locals.basePath}/usuarios`);
     }
     await UsuarioModel.eliminar(id);
-    res.redirect('/usuarios');
+    res.redirect(`${res.locals.basePath}/usuarios`);
   }
 };
 
