@@ -19,23 +19,16 @@ const LibroModel = {
     return rows;
   },
 
-  // Listado enriquecido para el catalogo (con nombre de formato, autores y generos)
-  async listarConDetalle() {
+  // Listado enriquecido para el catalogo (con nombre de formato, autores y generos).
+  // busqueda: texto opcional que filtra por ISBN exacto o titulo parcial (RF-05).
+  // El JOIN/STRING_AGG vive centralizado en vista_catalogo_libros (library_views.sql).
+  async listarConDetalle(busqueda) {
+    const termino = busqueda && busqueda.trim() ? busqueda.trim() : null;
     const { rows } = await pool.query(`
-      SELECT l.*, f.nombre_formato,
-             COALESCE(STRING_AGG(DISTINCT a.nombre_autor, ', '), '') AS autores,
-             COALESCE(STRING_AGG(DISTINCT g.nombre_genero, ', '), '') AS generos,
-             (SELECT il.url_imagen FROM imagenes_libro il
-                WHERE il.id_libro = l.id_libro AND il.es_portada = true LIMIT 1) AS portada
-      FROM libros l
-      JOIN formatos f ON f.id_formato = l.id_formato
-      LEFT JOIN libro_autor la ON la.id_libro = l.id_libro
-      LEFT JOIN autores a ON a.id_autor = la.id_autor
-      LEFT JOIN libro_genero lg ON lg.id_libro = l.id_libro
-      LEFT JOIN generos g ON g.id_genero = lg.id_genero
-      GROUP BY l.id_libro, f.nombre_formato
-      ORDER BY l.titulo
-    `);
+      SELECT * FROM vista_catalogo_libros
+      WHERE $1::text IS NULL OR isbn = $1 OR titulo ILIKE '%' || $1 || '%'
+      ORDER BY titulo
+    `, [termino]);
     return rows;
   },
 
@@ -89,10 +82,10 @@ const LibroModel = {
   },
 
   // ---- imagenes ----
-  async agregarImagen(idLibro, url, orden = 0, esPortada = false) {
+  async agregarImagen(idLibro, url, orden = 0, esPortada = false, textoAlternativo = '') {
     const { rows } = await pool.query(
-      'SELECT fn_agregar_imagen($1,$2,$3,$4) AS id_imagen',
-      [idLibro, url, orden, esPortada]
+      'SELECT fn_agregar_imagen($1,$2,$3,$4,$5) AS id_imagen',
+      [idLibro, url, orden, esPortada, textoAlternativo]
     );
     return rows[0].id_imagen;
   },

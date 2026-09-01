@@ -19,7 +19,11 @@ router.use('/generos', crearCatalogoRoutes(
   crearCatalogoController(GeneroModel, 'generos', 'nombre_genero', 'genero')
 ));
 router.use('/autores', crearCatalogoRoutes(
-  crearCatalogoController(AutorModel, 'autores', 'nombre_autor', 'autor')
+  // idCampo explicito: "autores" -> "autor" es un plural irregular
+  // ("autor" + "es", no "autor" + "s"), asi que el fallback generico
+  // vista.slice(0, -1) de catalogoController.js daria "autore" en vez
+  // de "autor" y rompia la columna ID y los links de editar/eliminar.
+  crearCatalogoController(AutorModel, 'autores', 'nombre_autor', 'autor', 'id_autor')
 ));
 router.use('/conceptos', crearCatalogoRoutes(
   crearCatalogoController(ConceptoModel, 'conceptos', 'nombre_concepto', 'concepto')

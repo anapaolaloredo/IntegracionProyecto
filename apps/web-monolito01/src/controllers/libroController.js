@@ -5,11 +5,15 @@ const { FormatoModel, GeneroModel, AutorModel, ConceptoModel } = require('../mod
 
 const LibroController = {
   async catalogo(req, res) {
-    const libros = await LibroModel.listarConDetalle();
-    res.render('libros/catalogo', { libros });
+    const busqueda = typeof req.query.q === 'string' ? req.query.q : '';
+    const libros = await LibroModel.listarConDetalle(busqueda);
+    res.render('libros/catalogo', { libros, busqueda });
   },
 
   async detalle(req, res) {
+    const mensajeError = req.session.mensajeError;
+    req.session.mensajeError = null;
+
     const libro = await LibroModel.obtenerPorId(req.params.id);
     if (!libro) return res.status(404).render('error', { titulo: 'No encontrado', mensaje: 'Libro no encontrado.' });
 
@@ -23,7 +27,7 @@ const LibroController = {
     ]);
     const formato = formatos.find((f) => f.id_formato === libro.id_formato);
 
-    res.render('libros/detalle', { libro, autores, generos, conceptos, imagenes, formato, catalogoConceptos });
+    res.render('libros/detalle', { libro, autores, generos, conceptos, imagenes, formato, catalogoConceptos, mensajeError });
   },
 
   async mostrarCrear(req, res) {
@@ -122,7 +126,8 @@ const LibroController = {
     }
     const urlPublica = `/uploads/${req.file.filename}`;
     const esPortada = req.body.es_portada === 'on';
-    await LibroModel.agregarImagen(id, urlPublica, Number(req.body.orden) || 0, esPortada);
+    const textoAlternativo = (req.body.texto_alternativo || '').trim();
+    await LibroModel.agregarImagen(id, urlPublica, Number(req.body.orden) || 0, esPortada, textoAlternativo);
     res.redirect(`${res.locals.basePath}/libros/${id}`);
   },
 

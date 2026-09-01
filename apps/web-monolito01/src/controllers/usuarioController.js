@@ -2,8 +2,10 @@ const UsuarioModel = require('../models/usuarioModel');
 
 const UsuarioController = {
   async listar(req, res) {
+    const mensajeError = req.session.mensajeError;
+    req.session.mensajeError = null;
     const usuarios = await UsuarioModel.listar();
-    res.render('usuarios/listar', { usuarios });
+    res.render('usuarios/listar', { usuarios, mensajeError });
   },
 
   async editar(req, res) {

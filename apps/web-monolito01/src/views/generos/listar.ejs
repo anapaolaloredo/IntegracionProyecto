@@ -5,6 +5,7 @@
       <a class="btn" href="<%= basePath %>/<%= vista %>/nuevo">+ Nuevo <%= etiqueta %></a>
     <% } %>
   </div>
+  <% if (mensajeError) { %><div class="mensaje-error"><%= mensajeError %></div><% } %>
   <div class="tarjeta">
     <% if (items.length === 0) { %>
       <p>Aun no hay <%= etiqueta %>s registrados.</p>

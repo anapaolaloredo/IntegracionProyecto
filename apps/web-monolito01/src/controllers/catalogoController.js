@@ -7,8 +7,10 @@ function crearCatalogoController(modelo, vista, campoNombre, etiqueta, idCampo) 
 
   return {
     async listar(req, res) {
+      const mensajeError = req.session.mensajeError;
+      req.session.mensajeError = null;
       const items = await modelo.listar();
-      res.render(`${vista}/listar`, { items, etiqueta, vista, idCampo: idCampoReal, campoNombre });
+      res.render(`${vista}/listar`, { items, etiqueta, vista, idCampo: idCampoReal, campoNombre, mensajeError });
     },
 
     mostrarCrear(req, res) {

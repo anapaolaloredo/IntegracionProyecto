@@ -1,19 +1,31 @@
 <%- include('../partials/header', { titulo: 'Catalogo' }) %>
-  <div style="display:flex;justify-content:space-between;align-items:center;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
     <h1>Catalogo de libros</h1>
     <% if (usuarioActual.rol === 'admin') { %>
       <a class="btn" href="<%= basePath %>/libros/nuevo">+ Nuevo libro</a>
     <% } %>
   </div>
 
+  <form method="GET" action="<%= basePath %>/libros" style="display:flex;gap:0.5rem;margin-bottom:1.2rem;max-width:480px;">
+    <input type="search" name="q" value="<%= busqueda %>" placeholder="Buscar por ISBN o titulo" style="flex:1;">
+    <button type="submit" class="btn">Buscar</button>
+    <% if (busqueda) { %><a class="btn secundario" href="<%= basePath %>/libros">Limpiar</a><% } %>
+  </form>
+
   <% if (libros.length === 0) { %>
-    <div class="tarjeta">Aun no hay libros registrados.</div>
+    <div class="tarjeta">
+      <% if (busqueda) { %>
+        No se encontraron libros que coincidan con "<%= busqueda %>".
+      <% } else { %>
+        Aun no hay libros registrados.
+      <% } %>
+    </div>
   <% } else { %>
     <div class="cuadricula">
       <% libros.forEach(l => { %>
         <a href="<%= basePath %>/libros/<%= l.id_libro %>" class="tarjeta libro-tarjeta" style="color:inherit;text-decoration:none;">
           <% if (l.portada) { %>
-            <img src="<%= basePath %><%= l.portada %>" alt="Portada de <%= l.titulo %>">
+            <img src="<%= basePath %><%= l.portada %>" alt="<%= l.portada_alt && l.portada_alt.trim() ? l.portada_alt : 'Portada de ' + l.titulo %>">
           <% } else { %>
             <div class="placeholder">Sin imagen</div>
           <% } %>

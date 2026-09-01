@@ -15,7 +15,7 @@ router.put('/:id', requerirAdmin, LibroController.actualizar);
 router.delete('/:id', requerirAdmin, LibroController.eliminar);
 
 // Imagenes del libro
-router.post('/:id/imagenes', requerirAdmin, upload.single('imagen'), LibroController.subirImagen);
+router.post('/:id/imagenes', requerirAdmin, upload.subirImagenControlado, LibroController.subirImagen);
 router.delete('/:id/imagenes/:idImagen', requerirAdmin, LibroController.eliminarImagen);
 
 // Conceptos definidos por el libro (definicion propia de la relacion)

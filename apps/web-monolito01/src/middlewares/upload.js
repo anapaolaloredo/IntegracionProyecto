@@ -27,4 +27,22 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5 MB
 });
 
+// Envuelve upload.single('imagen') para que un archivo invalido (tipo no
+// permitido, demasiado grande) no llegue como error sin manejar al
+// middleware global de errores (pagina "Error interno" completa), sino que
+// redirija de vuelta al detalle del libro con un mensaje, igual que el resto
+// de las validaciones de esta seccion (ver subirImagen en libroController).
+function subirImagenControlado(req, res, next) {
+  upload.single('imagen')(req, res, (err) => {
+    if (err) {
+      req.session.mensajeError = err.code === 'LIMIT_FILE_SIZE'
+        ? 'El archivo supera el tamano maximo permitido (5 MB).'
+        : err.message;
+      return res.redirect(`${res.locals.basePath}/libros/${req.params.id}`);
+    }
+    next();
+  });
+}
+
 module.exports = upload;
+module.exports.subirImagenControlado = subirImagenControlado;

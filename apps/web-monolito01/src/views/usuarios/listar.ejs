@@ -1,5 +1,6 @@
 <%- include('../partials/header', { titulo: 'Usuarios' }) %>
   <h1>Usuarios registrados</h1>
+  <% if (mensajeError) { %><div class="mensaje-error"><%= mensajeError %></div><% } %>
   <div class="tarjeta">
     <table>
       <thead>

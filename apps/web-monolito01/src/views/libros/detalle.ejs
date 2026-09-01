@@ -1,5 +1,6 @@
 <%- include('../partials/header', { titulo: libro.titulo }) %>
   <p><a href="<%= basePath %>/libros">&larr; Volver al catalogo</a></p>
+  <% if (mensajeError) { %><div class="mensaje-error"><%= mensajeError %></div><% } %>
 
   <div class="tarjeta">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;">
@@ -32,7 +33,7 @@
     <div class="cuadricula">
       <% imagenes.forEach(im => { %>
         <div>
-          <img src="<%= basePath %><%= im.url_imagen %>" alt="Imagen de <%= libro.titulo %>" style="width:100%;border-radius:10px;">
+          <img src="<%= basePath %><%= im.url_imagen %>" alt="<%= im.texto_alternativo && im.texto_alternativo.trim() ? im.texto_alternativo : 'Imagen de ' + libro.titulo %>" style="width:100%;border-radius:10px;">
           <div style="font-size:0.8rem;color:var(--color-texto-suave);"><%= im.es_portada ? 'Portada' : 'Orden: ' + im.orden %></div>
           <% if (usuarioActual.rol === 'admin') { %>
             <form method="POST" action="<%= basePath %>/libros/<%= libro.id_libro %>/imagenes/<%= im.id_imagen %>?_method=DELETE" onsubmit="return confirm('¿Eliminar esta imagen?');">
@@ -48,6 +49,7 @@
       <h3>Agregar imagen</h3>
       <form class="formulario" method="POST" action="<%= basePath %>/libros/<%= libro.id_libro %>/imagenes" enctype="multipart/form-data">
         <div><label for="imagen">Archivo</label><input type="file" id="imagen" name="imagen" accept="image/*" required></div>
+        <div><label for="texto_alternativo">Texto alternativo (accesibilidad)</label><input type="text" id="texto_alternativo" name="texto_alternativo" maxlength="255" placeholder="Ej. Portada de la edicion 2005"></div>
         <div><label for="orden">Orden</label><input type="number" id="orden" name="orden" value="0"></div>
         <div><label><input type="checkbox" name="es_portada"> Usar como portada</label></div>
         <button type="submit" class="btn">Subir imagen</button>
