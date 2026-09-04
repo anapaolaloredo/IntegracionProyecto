@@ -1,20 +1,24 @@
 -- =====================================================================
--- DATOS DE PRUEBA: Libreria en linea
+-- 02. DATOS DE PRUEBA (SEED) — Libreria en linea
 -- =====================================================================
--- Requisitos:
---   1) Haber cargado antes data/library_schema.sql (tablas + funciones).
---   2) Ejecutar sobre una base de datos "library" recien creada/vacia,
---      ya que este script asume que los SERIAL empiezan en 1 (no
---      referencia filas por nombre sino por el id devuelto por las
---      funciones fn_*, que a su vez dependen del orden de insercion).
+-- Requisitos: haber cargado antes, en orden, 00_create_database.sql,
+-- 01_schema.sql, 04_stored_procedures.sql, 05_triggers.sql y
+-- 06_views.sql. Ejecutar sobre una base de datos "library" recien
+-- creada/vacia (asume que los SERIAL empiezan en 1).
 --
 -- Uso:
 --   PGPASSWORD=666 psql -h localhost -U library_user -d library \
---     -f data/library_data.sql
+--     -f db/02_seed_30_per_table.sql
 --
 -- Todo el llenado usa las MISMAS funciones PL/pgSQL que usa la
 -- aplicacion (fn_crear_*, fn_asociar_*, fn_definir_concepto,
 -- fn_agregar_imagen), para no saltarse la logica de negocio.
+--
+-- Filas por tabla: usuarios 30, autores 30, generos 30, conceptos 30,
+-- libros 30. formatos se queda en 8 (decision documentada en
+-- docs/ENGINEERING_DECISIONS.md): no existen 30 formatos de libro
+-- reales distintos, forzar ese numero produciria relleno sin sentido
+-- de dominio.
 -- =====================================================================
 
 BEGIN;

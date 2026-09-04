@@ -6,13 +6,14 @@ Acceso a datos exclusivamente con psycopg2 (sin ORM).
 """
 
 import os
+from xml.etree import ElementTree as ET
 
 import psycopg2
 import psycopg2.errors
 import psycopg2.extras
 from dotenv import load_dotenv
 from flasgger import Swagger
-from flask import Flask, jsonify, request
+from flask import Flask, Response, request
 from flask_cors import CORS
 
 load_dotenv()
@@ -83,6 +84,56 @@ def fetch_books(where_clause="", params=None):
         conn.close()
 
 
+def book_to_element(book):
+    """Convierte un libro (dict) al mismo diseño XML que library.xml."""
+    book_el = ET.Element("book", isbn=book["isbn"])
+    ET.SubElement(book_el, "title").text = book["title"]
+
+    authors_el = ET.SubElement(book_el, "authors")
+    for author in book["authors"]:
+        ET.SubElement(authors_el, "author").text = author
+
+    year = book["publicationYear"]
+    ET.SubElement(book_el, "publicationYear").text = "" if year is None else str(year)
+
+    genres_el = ET.SubElement(book_el, "genres")
+    for genre in book["genres"]:
+        ET.SubElement(genres_el, "genre").text = genre
+
+    ET.SubElement(book_el, "price", currency="MXN").text = str(book["price"])
+    ET.SubElement(book_el, "stock").text = str(book["stock"])
+    ET.SubElement(book_el, "format").text = book["format"]
+
+    images_el = ET.SubElement(book_el, "images")
+    for image in book["images"]:
+        image_el = ET.SubElement(images_el, "image", cover=str(bool(image["cover"])).lower())
+        if image.get("alt"):
+            image_el.set("alt", image["alt"])
+        image_el.text = image["url"]
+
+    concepts_el = ET.SubElement(book_el, "concepts")
+    for concept in book["concepts"]:
+        concept_el = ET.SubElement(concepts_el, "concept", name=concept["name"])
+        ET.SubElement(concept_el, "definition").text = concept["definition"]
+
+    return book_el
+
+
+def books_xml_response(books, status=200):
+    root = ET.Element("library")
+    for book in books:
+        root.append(book_to_element(book))
+    body = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return Response(body, status=status, mimetype="application/xml")
+
+
+def error_xml_response(message, status):
+    root = ET.Element("error")
+    ET.SubElement(root, "message").text = message
+    body = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return Response(body, status=status, mimetype="application/xml")
+
+
 def get_or_create_id(cur, table, id_col, name_col, name):
     cur.execute(f"SELECT {id_col} FROM {table} WHERE {name_col} = %s", (name,))
     row = cur.fetchone()
@@ -126,11 +177,12 @@ def listar_libros():
     Lista todos los libros
     ---
     tags: [Libros]
+    produces: [application/xml]
     responses:
       200:
-        description: Lista de libros con autores, generos, imagenes y conceptos
+        description: Lista de libros (XML) con autores, generos, imagenes y conceptos
     """
-    return jsonify(fetch_books())
+    return books_xml_response(fetch_books())
 
 
 @app.route("/api/libros/buscar", methods=["GET"])
@@ -139,6 +191,7 @@ def buscar_libros():
     Busca libros por atributos (titulo, autor, genero, formato, anio, rango de precio)
     ---
     tags: [Libros]
+    produces: [application/xml]
     parameters:
       - {name: titulo, in: query, type: string}
       - {name: autor, in: query, type: string}
@@ -149,7 +202,7 @@ def buscar_libros():
       - {name: precio_max, in: query, type: number}
     responses:
       200:
-        description: Libros que cumplen los filtros dados
+        description: Libros (XML) que cumplen los filtros dados
     """
     conditions = []
     params = []
@@ -200,7 +253,7 @@ def buscar_libros():
         params.append(precio_max)
 
     where_clause = " AND ".join(conditions)
-    return jsonify(fetch_books(where_clause, params))
+    return books_xml_response(fetch_books(where_clause, params))
 
 
 @app.route("/api/libros/<isbn>", methods=["GET"])
@@ -209,18 +262,19 @@ def obtener_libro(isbn):
     Obtiene un libro por ISBN
     ---
     tags: [Libros]
+    produces: [application/xml]
     parameters:
       - {name: isbn, in: path, type: string, required: true}
     responses:
       200:
-        description: Libro encontrado
+        description: Libro encontrado (XML)
       404:
         description: Libro no encontrado
     """
     libros = fetch_books("l.isbn = %s", [isbn])
     if not libros:
-        return jsonify({"error": "Libro no encontrado"}), 404
-    return jsonify(libros[0])
+        return error_xml_response("Libro no encontrado", 404)
+    return books_xml_response(libros)
 
 
 @app.route("/api/libros", methods=["POST"])
@@ -260,9 +314,10 @@ def crear_libro():
                 properties:
                   name: {type: string}
                   definition: {type: string}
+    produces: [application/xml]
     responses:
       201:
-        description: Libro creado
+        description: Libro creado (XML)
       400:
         description: Datos invalidos
       409:
@@ -272,7 +327,7 @@ def crear_libro():
     requeridos = ["isbn", "title", "price", "stock", "format"]
     faltantes = [campo for campo in requeridos if data.get(campo) is None]
     if faltantes:
-        return jsonify({"error": f"Campos requeridos faltantes: {', '.join(faltantes)}"}), 400
+        return error_xml_response(f"Campos requeridos faltantes: {', '.join(faltantes)}", 400)
 
     conn = get_connection()
     try:
@@ -287,11 +342,11 @@ def crear_libro():
                 id_libro = cur.fetchone()[0]
                 guardar_relaciones(cur, id_libro, data)
     except psycopg2.errors.UniqueViolation:
-        return jsonify({"error": "Ya existe un libro con ese ISBN"}), 409
+        return error_xml_response("Ya existe un libro con ese ISBN", 409)
     finally:
         conn.close()
 
-    return jsonify(fetch_books("l.isbn = %s", [data["isbn"]])[0]), 201
+    return books_xml_response(fetch_books("l.isbn = %s", [data["isbn"]]), 201)
 
 
 @app.route("/api/libros/<isbn>", methods=["PUT"])
@@ -317,9 +372,10 @@ def actualizar_libro(isbn):
             genres: {type: array, items: {type: string}}
             images: {type: array, items: {type: object}}
             concepts: {type: array, items: {type: object}}
+    produces: [application/xml]
     responses:
       200:
-        description: Libro actualizado
+        description: Libro actualizado (XML)
       404:
         description: Libro no encontrado
     """
@@ -336,7 +392,7 @@ def actualizar_libro(isbn):
                 )
                 row = cur.fetchone()
                 if not row:
-                    return jsonify({"error": "Libro no encontrado"}), 404
+                    return error_xml_response("Libro no encontrado", 404)
                 id_libro, titulo_act, anio_act, precio_act, stock_act, id_formato_act = row
 
                 if "format" in data:
@@ -368,7 +424,7 @@ def actualizar_libro(isbn):
     finally:
         conn.close()
 
-    return jsonify(fetch_books("l.isbn = %s", [isbn])[0])
+    return books_xml_response(fetch_books("l.isbn = %s", [isbn]))
 
 
 @app.route("/api/libros/<isbn>", methods=["DELETE"])
@@ -377,11 +433,12 @@ def eliminar_libro(isbn):
     Elimina un libro por ISBN
     ---
     tags: [Libros]
+    produces: [application/xml]
     parameters:
       - {name: isbn, in: path, type: string, required: true}
     responses:
       200:
-        description: Libro eliminado
+        description: Libro eliminado (XML)
       404:
         description: Libro no encontrado
     """
@@ -391,10 +448,14 @@ def eliminar_libro(isbn):
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM libros WHERE isbn = %s RETURNING id_libro", (isbn,))
                 if cur.fetchone() is None:
-                    return jsonify({"error": "Libro no encontrado"}), 404
+                    return error_xml_response("Libro no encontrado", 404)
     finally:
         conn.close()
-    return jsonify({"mensaje": "Libro eliminado"})
+
+    root = ET.Element("result")
+    ET.SubElement(root, "message").text = "Libro eliminado"
+    body = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return Response(body, status=200, mimetype="application/xml")
 
 
 if __name__ == "__main__":
