@@ -26,6 +26,10 @@ app.set('views', path.join(__dirname, 'views'));
 // arman res.redirect() con rutas absolutas.
 app.use((req, res, next) => {
   res.locals.basePath = BASE_PATH;
+  // Valor por defecto: si session/inyectarUsuario nunca llega a correr
+  // (p.ej. la sesion falla antes), la pagina de error igual puede
+  // renderizar el header sin volver a fallar por usuarioActual undefined.
+  res.locals.usuarioActual = null;
   next();
 });
 

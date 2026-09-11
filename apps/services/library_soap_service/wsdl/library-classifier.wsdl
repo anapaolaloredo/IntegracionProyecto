@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Contrato WSDL 1.1 del modulo SOAP "library-classifier".
+
+  Regla de auditoria seguida al diseñar este contrato (ver Parte 5,
+  punto 10 del ejercicio guiado): se exponen SOLO los datos que el
+  cliente necesita para identificar que esta clasificando y para
+  registrar su clasificacion. No se exponen columnas internas del
+  monolito (id_libro interno, contraseñas, ids de formato, etc.).
+-->
+<wsdl:definitions
+    name="LibraryClassifierService"
+    targetNamespace="urn:udem:iac:library-classifier"
+    xmlns:tns="urn:udem:iac:library-classifier"
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+    xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/">
+
+  <wsdl:documentation>
+    Modulo SOAP independiente para clasificar (IaaS/PaaS/SaaS/FaaS) los
+    conceptos del catalogo de la libreria (monolito Node.js + PostgreSQL).
+    Este contrato es la unica superficie publica del modulo: la base de
+    datos y su esquema real permanecen ocultos detras de estas operaciones.
+  </wsdl:documentation>
+
+  <!-- =================================================================
+       1. TIPOS (XSD)
+       ================================================================= -->
+  <wsdl:types>
+    <xsd:schema targetNamespace="urn:udem:iac:library-classifier"
+                xmlns:tns="urn:udem:iac:library-classifier"
+                elementFormDefault="qualified">
+
+      <!-- Modelo de servicio Cloud permitido. Tipado explicito: el
+           cliente no puede enviar un string arbitrario. -->
+      <xsd:simpleType name="ModeloCloud">
+        <xsd:restriction base="xsd:string">
+          <xsd:enumeration value="IaaS"/>
+          <xsd:enumeration value="PaaS"/>
+          <xsd:enumeration value="SaaS"/>
+          <xsd:enumeration value="FaaS"/>
+        </xsd:restriction>
+      </xsd:simpleType>
+
+      <!-- - ObtenerConceptosPendientes -->
+      <xsd:element name="ObtenerConceptosPendientesRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="correoClasificador" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:complexType name="ConceptoPendiente">
+        <xsd:sequence>
+          <xsd:element name="isbn" type="xsd:string"/>
+          <xsd:element name="tituloLibro" type="xsd:string"/>
+          <xsd:element name="idConcepto" type="xsd:int"/>
+          <xsd:element name="nombreConcepto" type="xsd:string"/>
+          <xsd:element name="definicion" type="xsd:string"/>
+          <xsd:element name="categorias" type="xsd:string" minOccurs="0"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:element name="ObtenerConceptosPendientesResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="conceptoPendiente" type="tns:ConceptoPendiente"
+                         minOccurs="0" maxOccurs="unbounded"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- - RegistrarClasificacion -->
+      <xsd:element name="RegistrarClasificacionRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="nombre" type="xsd:string"/>
+            <xsd:element name="apellido" type="xsd:string"/>
+            <xsd:element name="correo" type="xsd:string"/>
+            <xsd:element name="isbn" type="xsd:string"/>
+            <xsd:element name="idConcepto" type="xsd:int"/>
+            <xsd:element name="modeloCloud" type="tns:ModeloCloud"/>
+            <xsd:element name="origenCliente" type="xsd:string" minOccurs="0"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="RegistrarClasificacionResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="idClasificacion" type="xsd:int"/>
+            <xsd:element name="mensaje" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- - ObtenerProgresoUsuario -->
+      <xsd:element name="ObtenerProgresoUsuarioRequest">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="correo" type="xsd:string"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:element name="ObtenerProgresoUsuarioResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="totalConceptos" type="xsd:int"/>
+            <xsd:element name="totalClasificados" type="xsd:int"/>
+            <xsd:element name="totalPendientes" type="xsd:int"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+      <!-- - ObtenerEstadisticasPorModelo (Tarea 1, protegida con
+             WS-Security UsernameToken en soap:Header; ver soap/security.py) -->
+      <xsd:element name="ObtenerEstadisticasPorModeloRequest">
+        <xsd:complexType>
+          <xsd:sequence/>
+        </xsd:complexType>
+      </xsd:element>
+
+      <xsd:complexType name="EstadisticaModelo">
+        <xsd:sequence>
+          <xsd:element name="modeloCloud" type="tns:ModeloCloud"/>
+          <xsd:element name="total" type="xsd:int"/>
+        </xsd:sequence>
+      </xsd:complexType>
+
+      <xsd:element name="ObtenerEstadisticasPorModeloResponse">
+        <xsd:complexType>
+          <xsd:sequence>
+            <xsd:element name="estadistica" type="tns:EstadisticaModelo"
+                         minOccurs="0" maxOccurs="unbounded"/>
+          </xsd:sequence>
+        </xsd:complexType>
+      </xsd:element>
+
+    </xsd:schema>
+  </wsdl:types>
+
+  <!-- =================================================================
+       2. MENSAJES
+       ================================================================= -->
+  <wsdl:message name="ObtenerConceptosPendientesInput">
+    <wsdl:part name="parameters" element="tns:ObtenerConceptosPendientesRequest"/>
+  </wsdl:message>
+  <wsdl:message name="ObtenerConceptosPendientesOutput">
+    <wsdl:part name="parameters" element="tns:ObtenerConceptosPendientesResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="RegistrarClasificacionInput">
+    <wsdl:part name="parameters" element="tns:RegistrarClasificacionRequest"/>
+  </wsdl:message>
+  <wsdl:message name="RegistrarClasificacionOutput">
+    <wsdl:part name="parameters" element="tns:RegistrarClasificacionResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="ObtenerProgresoUsuarioInput">
+    <wsdl:part name="parameters" element="tns:ObtenerProgresoUsuarioRequest"/>
+  </wsdl:message>
+  <wsdl:message name="ObtenerProgresoUsuarioOutput">
+    <wsdl:part name="parameters" element="tns:ObtenerProgresoUsuarioResponse"/>
+  </wsdl:message>
+
+  <wsdl:message name="ObtenerEstadisticasPorModeloInput">
+    <wsdl:part name="parameters" element="tns:ObtenerEstadisticasPorModeloRequest"/>
+  </wsdl:message>
+  <wsdl:message name="ObtenerEstadisticasPorModeloOutput">
+    <wsdl:part name="parameters" element="tns:ObtenerEstadisticasPorModeloResponse"/>
+  </wsdl:message>
+
+  <!-- =================================================================
+       3. PORT TYPE (interfaz del servicio)
+       ================================================================= -->
+  <wsdl:portType name="LibraryClassifierPortType">
+    <wsdl:operation name="ObtenerConceptosPendientes">
+      <wsdl:input message="tns:ObtenerConceptosPendientesInput"/>
+      <wsdl:output message="tns:ObtenerConceptosPendientesOutput"/>
+    </wsdl:operation>
+    <wsdl:operation name="RegistrarClasificacion">
+      <wsdl:input message="tns:RegistrarClasificacionInput"/>
+      <wsdl:output message="tns:RegistrarClasificacionOutput"/>
+    </wsdl:operation>
+    <wsdl:operation name="ObtenerProgresoUsuario">
+      <wsdl:input message="tns:ObtenerProgresoUsuarioInput"/>
+      <wsdl:output message="tns:ObtenerProgresoUsuarioOutput"/>
+    </wsdl:operation>
+    <wsdl:operation name="ObtenerEstadisticasPorModelo">
+      <wsdl:documentation>
+        Requiere WS-Security UsernameToken (wsse:Security en soap:Header).
+      </wsdl:documentation>
+      <wsdl:input message="tns:ObtenerEstadisticasPorModeloInput"/>
+      <wsdl:output message="tns:ObtenerEstadisticasPorModeloOutput"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <!-- =================================================================
+       4. BINDING
+       ================================================================= -->
+  <wsdl:binding name="LibraryClassifierBinding" type="tns:LibraryClassifierPortType">
+    <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="document"/>
+
+    <wsdl:operation name="ObtenerConceptosPendientes">
+      <soap:operation soapAction="urn:udem:iac:library-classifier#ObtenerConceptosPendientes"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+
+    <wsdl:operation name="RegistrarClasificacion">
+      <soap:operation soapAction="urn:udem:iac:library-classifier#RegistrarClasificacion"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+
+    <wsdl:operation name="ObtenerProgresoUsuario">
+      <soap:operation soapAction="urn:udem:iac:library-classifier#ObtenerProgresoUsuario"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+
+    <wsdl:operation name="ObtenerEstadisticasPorModelo">
+      <soap:operation soapAction="urn:udem:iac:library-classifier#ObtenerEstadisticasPorModelo"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <!-- =================================================================
+       5. SERVICIO / ENDPOINT
+       ================================================================= -->
+  <wsdl:service name="LibraryClassifierService">
+    <wsdl:port name="LibraryClassifierPort" binding="tns:LibraryClassifierBinding">
+      <!-- En la nube esta URL se reemplaza por la del host publico
+           (ver config/.env: SOAP_PUBLIC_URL). Se deja localhost como
+           valor de referencia para desarrollo. -->
+      <soap:address location="http://localhost:5002/soap"/>
+    </wsdl:port>
+  </wsdl:service>
+
+</wsdl:definitions>
