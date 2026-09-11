@@ -84,6 +84,33 @@ def fetch_books(where_clause="", params=None):
         conn.close()
 
 
+# Solo titulo, isbn y temas (conceptos) con su descripcion.
+BOOK_TOPICS_QUERY = """
+    SELECT
+        l.isbn,
+        l.titulo AS title,
+        COALESCE((
+            SELECT json_agg(json_build_object(
+                'name', c.nombre_concepto, 'description', lc.definicion
+            ) ORDER BY c.nombre_concepto)
+            FROM libro_concepto lc JOIN conceptos c ON c.id_concepto = lc.id_concepto
+            WHERE lc.id_libro = l.id_libro
+        ), '[]') AS topics
+    FROM libros l
+"""
+
+
+def fetch_book_topics(where_clause="", params=None):
+    query = BOOK_TOPICS_QUERY + (f" WHERE {where_clause}" if where_clause else "") + " ORDER BY l.titulo"
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params or [])
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
 def book_to_element(book):
     """Convierte un libro (dict) al mismo diseño XML que library.xml."""
     book_el = ET.Element("book", isbn=book["isbn"])
@@ -123,6 +150,95 @@ def books_xml_response(books, status=200):
     root = ET.Element("library")
     for book in books:
         root.append(book_to_element(book))
+    body = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return Response(body, status=status, mimetype="application/xml")
+
+
+def book_topics_to_element(book):
+    """Convierte un libro (dict) a <book isbn="..."><title/><topics/></book>."""
+    book_el = ET.Element("book", isbn=book["isbn"])
+    ET.SubElement(book_el, "title").text = book["title"]
+
+    topics_el = ET.SubElement(book_el, "topics")
+    for topic in book["topics"]:
+        topic_el = ET.SubElement(topics_el, "topic", name=topic["name"])
+        ET.SubElement(topic_el, "description").text = topic["description"]
+
+    return book_el
+
+
+def book_topics_xml_response(books, status=200):
+    root = ET.Element("library")
+    for book in books:
+        root.append(book_topics_to_element(book))
+    body = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    return Response(body, status=status, mimetype="application/xml")
+
+
+# Solo los datos minimos para tarjetas de catalogo (isbn, titulo, autores,
+# anio, precio) junto con sus imagenes; sin generos/stock/formato/conceptos.
+BOOK_CATALOG_QUERY = """
+    SELECT
+        l.isbn,
+        l.titulo AS title,
+        l.anio_publicacion AS "publicationYear",
+        l.precio AS price,
+        COALESCE((
+            SELECT json_agg(a.nombre_autor ORDER BY a.nombre_autor)
+            FROM libro_autor la JOIN autores a ON a.id_autor = la.id_autor
+            WHERE la.id_libro = l.id_libro
+        ), '[]') AS authors,
+        COALESCE((
+            SELECT json_agg(json_build_object(
+                'url', i.url_imagen, 'cover', i.es_portada, 'alt', i.texto_alternativo
+            ) ORDER BY i.orden)
+            FROM imagenes_libro i WHERE i.id_libro = l.id_libro
+        ), '[]') AS images
+    FROM libros l
+"""
+
+
+def fetch_book_catalog(where_clause="", params=None):
+    query = BOOK_CATALOG_QUERY + (f" WHERE {where_clause}" if where_clause else "") + " ORDER BY l.titulo"
+    conn = get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(query, params or [])
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def book_catalog_to_element(book):
+    """Convierte un libro (dict) a <book isbn="..."><title/><authors/>
+    <publicationYear/><price/><images/></book> (mismos nombres de
+    etiqueta que book_to_element, pero sin generos/stock/formato/conceptos)."""
+    book_el = ET.Element("book", isbn=book["isbn"])
+    ET.SubElement(book_el, "title").text = book["title"]
+
+    authors_el = ET.SubElement(book_el, "authors")
+    for author in book["authors"]:
+        ET.SubElement(authors_el, "author").text = author
+
+    year = book["publicationYear"]
+    ET.SubElement(book_el, "publicationYear").text = "" if year is None else str(year)
+
+    ET.SubElement(book_el, "price", currency="MXN").text = str(book["price"])
+
+    images_el = ET.SubElement(book_el, "images")
+    for image in book["images"]:
+        image_el = ET.SubElement(images_el, "image", cover=str(bool(image["cover"])).lower())
+        if image.get("alt"):
+            image_el.set("alt", image["alt"])
+        image_el.text = image["url"]
+
+    return book_el
+
+
+def book_catalog_xml_response(books, status=200):
+    root = ET.Element("library")
+    for book in books:
+        root.append(book_catalog_to_element(book))
     body = ET.tostring(root, encoding="utf-8", xml_declaration=True)
     return Response(body, status=status, mimetype="application/xml")
 
@@ -254,6 +370,41 @@ def buscar_libros():
 
     where_clause = " AND ".join(conditions)
     return books_xml_response(fetch_books(where_clause, params))
+
+
+@app.route("/api/libros/temas", methods=["GET"])
+def listar_temas_libros():
+    """
+    Lista libros con nombre, isbn, temas (conceptos) que manejan y descripcion de cada tema
+    ---
+    tags: [Libros]
+    produces: [application/xml]
+    parameters:
+      - {name: isbn, in: query, type: string, description: Filtra por ISBN exacto}
+    responses:
+      200:
+        description: Libros (XML) con isbn, titulo, temas y descripcion de cada tema
+    """
+    isbn = request.args.get("isbn")
+    where_clause = "l.isbn = %s" if isbn else ""
+    params = [isbn] if isbn else None
+    return book_topics_xml_response(fetch_book_topics(where_clause, params))
+
+
+@app.route("/api/libros/catalogo", methods=["GET"])
+def listar_catalogo_libros():
+    """
+    Lista los datos minimos de cada libro (isbn, titulo, autores, anio de
+    publicacion, precio) junto con sus imagenes, pensado para tarjetas de
+    catalogo (p.ej. la app de escritorio Electron)
+    ---
+    tags: [Libros]
+    produces: [application/xml]
+    responses:
+      200:
+        description: Libros (XML) con isbn, titulo, autores, anio, precio e imagenes
+    """
+    return book_catalog_xml_response(fetch_book_catalog())
 
 
 @app.route("/api/libros/<isbn>", methods=["GET"])

@@ -1,0 +1,13 @@
+{
+  "name": "electron-app-catalogo",
+  "version": "1.0.0",
+  "description": "App de escritorio (Electron, Windows 11) que muestra el catalogo de libros en tarjetas, consumiendo XML de un microservicio con URL/endpoint configurables",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "electron": "^44.3.0"
+  }
+}

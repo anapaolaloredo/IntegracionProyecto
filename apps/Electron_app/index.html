@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Catalogo de libros</title>
+    <style>
+      :root {
+        --primario: #2563eb;
+        --texto: #111827;
+        --fondo: #f3f4f6;
+      }
+      body {
+        font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+        background: var(--fondo);
+        margin: 0;
+        padding: 24px;
+        color: var(--texto);
+      }
+      h1 {
+        font-size: 1.4rem;
+        margin-bottom: 4px;
+      }
+      .subtitle {
+        color: #4b5563;
+        margin-top: 0;
+        margin-bottom: 20px;
+      }
+      .panel {
+        background: #fff;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+      .fila-config {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+      }
+      .campo {
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-width: 220px;
+      }
+      label {
+        font-weight: 600;
+        margin-bottom: 4px;
+        font-size: 0.85rem;
+      }
+      input {
+        padding: 8px 10px;
+        border-radius: 6px;
+        border: 1px solid #d1d5db;
+        font-size: 0.95rem;
+      }
+      button {
+        padding: 9px 16px;
+        border: none;
+        border-radius: 6px;
+        background: var(--primario);
+        color: #fff;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: default;
+      }
+      button.secundario {
+        background: #4b5563;
+      }
+      #errorBox {
+        display: none;
+        background: #fee2e2;
+        color: #991b1b;
+        padding: 12px;
+        border-radius: 8px;
+        margin-bottom: 16px;
+      }
+      #catalogGrid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        background: #fff;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+      }
+      .card img {
+        width: 100%;
+        height: 220px;
+        object-fit: cover;
+        background: #e5e7eb;
+      }
+      .card .cuerpo {
+        padding: 12px 14px;
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .card .titulo {
+        font-weight: 700;
+        font-size: 1rem;
+      }
+      .card .dato {
+        font-size: 0.85rem;
+        color: #374151;
+      }
+      .card .precio {
+        margin-top: auto;
+        font-weight: 700;
+        color: var(--primario);
+      }
+      #paginacion {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 16px;
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Catalogo de libros</h1>
+    <p class="subtitle">
+      Consume, en XML, el microservicio de libros de la nube (configurable
+      abajo).
+    </p>
+
+    <div class="panel">
+      <div class="fila-config">
+        <div class="campo">
+          <label for="baseUrlInput">URL base del microservicio</label>
+          <input id="baseUrlInput" type="text" placeholder="http://IP-DE-LA-NUBE:5001" />
+        </div>
+        <div class="campo">
+          <label for="endpointInput">Endpoint</label>
+          <input id="endpointInput" type="text" placeholder="/api/libros/catalogo" />
+        </div>
+        <button id="btnCargar">Cargar catalogo</button>
+      </div>
+    </div>
+
+    <div id="errorBox"></div>
+
+    <div id="catalogGrid"></div>
+
+    <div id="paginacion">
+      <button id="btnAnterior" class="secundario">Anterior</button>
+      <span id="infoPagina">Sin datos</span>
+      <button id="btnSiguiente" class="secundario">Siguiente</button>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
