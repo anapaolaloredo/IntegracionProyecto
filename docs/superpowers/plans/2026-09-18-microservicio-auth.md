@@ -120,7 +120,7 @@ $$;
 GRANT CONNECT ON DATABASE library TO auth_service_user;
 GRANT USAGE ON SCHEMA public TO auth_service_user;
 
-GRANT SELECT, INSERT, UPDATE ON cuentas, personas TO auth_service_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON cuentas, personas TO auth_service_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON codigos_verificacion, sesiones TO auth_service_user;
 
 GRANT USAGE, SELECT ON SEQUENCE cuentas_id_cuenta_seq TO auth_service_user;
