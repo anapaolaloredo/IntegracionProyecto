@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Construir un microservicio Flask + Psycopg 3 + PostgreSQL, independiente del monolito, que registra usuarios, autentica con 2FA por correo (SMTP propio/local vía Postfix), y expone sesiones de 30 minutos por token — con respuestas XML (default) o JSON — más la migración de la tabla `usuarios` compartida y la actualización del monolito para que siga funcionando.
+**Goal:** Construir un microservicio Flask + Psycopg 3 + PostgreSQL, independiente del monolito, que registra usuarios, autentica con 2FA por correo (SMTP propio/local vía Postfix), y expone sesiones de 30 minutos por token — con respuestas XML (default) o JSON — usando tablas propias (`cuentas`/`personas`/`codigos_verificacion`/`sesiones`), sin tocar el monolito ni su base de datos existente.
 
-**Architecture:** Capas separadas por responsabilidad dentro de `apps/services/login/`: `db/` (conexión + SQL parametrizado), `auth/` (hashing/tokens, sin Flask ni SQL), `mail/` (envío SMTP local), `render/` (serialización XML/JSON), `errors.py` (excepciones de dominio → status HTTP), `service.py` (orquestación de negocio, sin Flask), `app.py` (rutas HTTP + Swagger). La BD normaliza `usuarios`/`personas` y agrega `codigos_verificacion`/`sesiones`, siguiendo el mismo patrón de rol de mínimo privilegio que ya usa `apps/services/library_soap_service`.
+**Architecture:** Capas separadas por responsabilidad dentro de `apps/services/login/`: `db/` (conexión + SQL parametrizado), `auth/` (hashing/tokens, sin Flask ni SQL), `mail/` (envío SMTP local), `render/` (serialización XML/JSON), `errors.py` (excepciones de dominio → status HTTP), `service.py` (orquestación de negocio, sin Flask), `app.py` (rutas HTTP + Swagger). La BD tiene 4 tablas propias del microservicio (`cuentas`/`personas`/`codigos_verificacion`/`sesiones`), sin FK hacia ninguna tabla del monolito, siguiendo el mismo patrón de rol de mínimo privilegio que ya usa `apps/services/library_soap_service`.
 
 **Tech Stack:** Python 3, Flask 3, Psycopg 3 (`psycopg[binary]`), python-dotenv, flasgger (Swagger), werkzeug.security (hashing), smtplib (stdlib), PostgreSQL 15, Postfix (OS-level, solo entrega local).
 
@@ -18,28 +18,41 @@
 - Las sesiones expiran a los **30 minutos** exactos desde su creación (vida fija, no deslizante).
 - El correo debe ser único y validarse por formato antes de registrar.
 - El SMTP del 2FA debe ser **propio y local** a la instancia (Postfix), nunca un proveedor externo (Gmail/SendGrid/etc.); el correo se entrega en un buzón local de la propia instancia.
-- El microservicio **nunca** hace llamadas HTTP hacia el monolito, ni el monolito hacia él — solo comparten la base de datos física `library`.
+- El microservicio **nunca** hace llamadas HTTP hacia el monolito, ni el monolito hacia él, y no comparte ninguna tabla con él — solo la misma base de datos física `library`, con tablas propias.
 - Los endpoints se documentan con Swagger (flasgger), con ejemplos XML y JSON.
 
 ---
 
 ## Fase 1 — Base de datos
 
-### Task 1: Migración SQL de la tabla `usuarios`
+
+### Task 1: Tablas propias del microservicio de login
+
+> **Nota (2026-09-18, ya implementada):** la primera versión de esta tarea
+> normalizaba la tabla `usuarios` del monolito. Se descartó por costo/tiempo
+> — al implementarla apareció `vista_administradores` (dependiente de
+> `nombre_usuario`) y además requería actualizar el monolito (antigua
+> Fase 2 / Task 3, **eliminada** — el monolito ya no se toca en absoluto).
+> Ver la ruling en `.superpowers/sdd/2026-09-18-microservicio-auth/progress.md`.
+> Esta sección ya refleja el diseño vigente y lo que quedó commiteado en
+> `3d950b3`.
 
 **Files:**
-- Create: `data/migrations/2026-09-18_normalizar_usuarios.sql`
+- Create: `data/migrations/2026-09-18_tablas_login.sql`
 
 **Interfaces:**
-- Produces: tablas `personas`, `codigos_verificacion`, `sesiones`; columna `usuarios.nombre_usuario` eliminada; rol `auth_service_user` con sus GRANTs. Estos nombres de tabla/columna son los que usará `db/repository.py` en la Fase 3.
+- Produces: tablas `cuentas` (`id_cuenta, correo, contrasena_hash, rol, fecha_registro`), `personas` (`id_cuenta, nombre, apellido_paterno, apellido_materno`), `codigos_verificacion` (`id_codigo, id_cuenta, codigo_hash, expira_en, usado, creado_en`), `sesiones` (`token, id_cuenta, creada_en, expira_en`); rol `auth_service_user` con sus GRANTs. Estos nombres de tabla/columna son los que usará `db/repository.py` en la Fase 3 — **nota:** ninguna FK apunta a `usuarios` del monolito; estas 4 tablas son completamente independientes.
 
-- [ ] **Step 1: Escribir el script de migración**
+- [x] **Step 1: Escribir el script de migración** (ya implementado — contenido final, additive-only, sin tocar `usuarios`/vistas del monolito):
 
 ```sql
 -- =====================================================================
--- Migracion: normaliza usuarios (persona vs credenciales) para el
--- microservicio de autenticacion (apps/services/login).
--- Ejecutar UNA sola vez, contra una base de datos que ya tiene cargado
+-- Migracion: Tablas propias del microservicio de autenticacion
+-- (apps/services/login). Additive-only: no ALTER/DROP on existing tables.
+-- Crea un conjunto completamente independiente de tablas de auth
+-- que no comparten ni modifican el schema de la aplicacion monolito.
+--
+-- Ejecutar UNA sola vez contra una base de datos que ya tiene cargado
 -- data/library_schema.sql (+ opcionalmente data/library_views.sql y
 -- data/library_data.sql). Requiere un rol con privilegio para CREATE ROLE
 -- (el rol de aplicacion library_user NO lo tiene): en la instancia GCP,
@@ -50,67 +63,48 @@
 -- =====================================================================
 
 -- ---------------------------------------------------------------------
--- 0. vista_administradores depende de usuarios.nombre_usuario (ver
---    data/library_views.sql) - hay que soltarla antes del DROP COLUMN del
---    paso 2 y recrearla contra el esquema nuevo.
+-- 1. Tabla cuentas: Autenticacion independiente del microservicio
+--    (username, password, rol - NO toca usuarios del monolito)
 -- ---------------------------------------------------------------------
-DROP VIEW IF EXISTS vista_administradores;
+CREATE TABLE IF NOT EXISTS cuentas (
+    id_cuenta        SERIAL PRIMARY KEY,
+    correo           VARCHAR(150) NOT NULL UNIQUE,
+    contrasena_hash  VARCHAR(255) NOT NULL,
+    rol              VARCHAR(10)  NOT NULL DEFAULT 'cliente'
+                         CHECK (rol IN ('admin','cliente')),
+    fecha_registro   TIMESTAMP    NOT NULL DEFAULT now()
+);
 
 -- ---------------------------------------------------------------------
--- 1. Tabla personas (1:1 con usuarios) + backfill desde nombre_usuario
+-- 2. Tabla personas: Datos personales (1:1 con cuentas)
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS personas (
-    id_usuario        INT PRIMARY KEY REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    id_cuenta         INT PRIMARY KEY REFERENCES cuentas(id_cuenta) ON DELETE CASCADE,
     nombre            VARCHAR(100) NOT NULL,
     apellido_paterno  VARCHAR(100) NOT NULL,
     apellido_materno  VARCHAR(100) NOT NULL
 );
 
--- Backfill: el nombre_usuario existente se usa como nombre provisional;
--- los apellidos quedan como placeholder '(pendiente)' porque no existian
--- antes de esta migracion (son datos de prueba, se pueden corregir a mano).
-INSERT INTO personas (id_usuario, nombre, apellido_paterno, apellido_materno)
-SELECT id_usuario, nombre_usuario, '(pendiente)', '(pendiente)'
-FROM usuarios
-ON CONFLICT (id_usuario) DO NOTHING;
-
 -- ---------------------------------------------------------------------
--- 2. Eliminar nombre_usuario de usuarios (ya vive en personas.nombre)
--- ---------------------------------------------------------------------
-ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_nombre_usuario_key;
-ALTER TABLE usuarios DROP COLUMN IF EXISTS nombre_usuario;
-
--- Recrear vista_administradores contra el esquema nuevo (mismo nombre de
--- columna de salida `nombre_usuario`, para no romper a quien ya la usa,
--- pero ahora resuelto desde personas.nombre).
-CREATE OR REPLACE VIEW vista_administradores AS
-SELECT u.id_usuario, p.nombre AS nombre_usuario, u.correo, u.fecha_registro
-FROM usuarios u
-JOIN personas p ON p.id_usuario = u.id_usuario
-WHERE u.rol = 'admin';
-
--- ---------------------------------------------------------------------
--- 3. Tablas propias del microservicio de login
+-- 3. Tablas de funcionalidad: Verificacion y sesiones
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS codigos_verificacion (
     id_codigo    SERIAL PRIMARY KEY,
-    id_usuario   INT NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    id_cuenta    INT NOT NULL REFERENCES cuentas(id_cuenta) ON DELETE CASCADE,
     codigo_hash  VARCHAR(255) NOT NULL,
     expira_en    TIMESTAMP NOT NULL,
     usado        BOOLEAN NOT NULL DEFAULT false,
     creado_en    TIMESTAMP NOT NULL DEFAULT now()
 );
-
-CREATE INDEX IF NOT EXISTS idx_codigos_verificacion_usuario ON codigos_verificacion (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_codigos_verificacion_cuenta ON codigos_verificacion (id_cuenta);
 
 CREATE TABLE IF NOT EXISTS sesiones (
     token        VARCHAR(64) PRIMARY KEY,
-    id_usuario   INT NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+    id_cuenta    INT NOT NULL REFERENCES cuentas(id_cuenta) ON DELETE CASCADE,
     creada_en    TIMESTAMP NOT NULL DEFAULT now(),
     expira_en    TIMESTAMP NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_sesiones_usuario ON sesiones (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_sesiones_cuenta ON sesiones (id_cuenta);
 
 -- ---------------------------------------------------------------------
 -- 4. Rol de minimo privilegio para el microservicio de login
@@ -126,400 +120,16 @@ $$;
 GRANT CONNECT ON DATABASE library TO auth_service_user;
 GRANT USAGE ON SCHEMA public TO auth_service_user;
 
-GRANT SELECT, INSERT, UPDATE ON usuarios, personas TO auth_service_user;
-GRANT SELECT, INSERT, UPDATE ON codigos_verificacion, sesiones TO auth_service_user;
-GRANT DELETE ON sesiones TO auth_service_user;
+GRANT SELECT, INSERT, UPDATE ON cuentas, personas TO auth_service_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON codigos_verificacion, sesiones TO auth_service_user;
 
-GRANT USAGE, SELECT ON SEQUENCE usuarios_id_usuario_seq TO auth_service_user;
+GRANT USAGE, SELECT ON SEQUENCE cuentas_id_cuenta_seq TO auth_service_user;
 GRANT USAGE, SELECT ON SEQUENCE codigos_verificacion_id_codigo_seq TO auth_service_user;
 ```
 
-- [ ] **Step 2: Aplicar la migración contra la BD local y verificar**
+- [x] **Step 2: Aplicar y verificar** (ya hecho — `cuentas`, `personas`, `codigos_verificacion`, `sesiones` existen; `auth_service_user` creado con sus GRANTs; `usuarios`/`vista_administradores` del monolito confirmados intactos, 30 usuarios semilla sin cambios).
 
-Run (como superusuario de Postgres — `library_user` no tiene privilegio CREATE ROLE): `psql -d library -f data/migrations/2026-09-18_normalizar_usuarios.sql` (si tu conexión por defecto no es superusuario, usa `psql -U <tu-superusuario-local> -d library -f ...`)
-Expected: sin errores. Luego:
-
-Run: `psql -U library_user -d library -c "\d personas" -c "\d codigos_verificacion" -c "\d sesiones" -c "\d usuarios" -c "\d vista_administradores"`
-Expected: `personas`, `codigos_verificacion` y `sesiones` existen con las columnas de arriba; `usuarios` ya NO tiene la columna `nombre_usuario`; `personas` tiene tantas filas como `usuarios` (backfill aplicado); `vista_administradores` existe y `SELECT * FROM vista_administradores;` no da error.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add data/migrations/2026-09-18_normalizar_usuarios.sql
-git commit -m "feat(db): migrar usuarios a personas + tablas del microservicio de login"
-```
-
----
-
-### Task 2: Actualizar el esquema canónico y los datos semilla
-
-**Files:**
-- Modify: `data/library_schema.sql`
-- Modify: `data/library_data.sql`
-- Modify: `data/library_views.sql`
-
-**Interfaces:**
-- Consumes: estructura de tablas definida en Task 1.
-- Produces: `fn_crear_usuario(p_correo, p_contrasena_hash, p_nombre, p_apellido_paterno, p_apellido_materno, p_rol)` y `fn_actualizar_usuario(p_id, p_correo, p_nombre, p_apellido_paterno, p_apellido_materno, p_rol)` con la nueva firma — el monolito (Task 3) llama estas funciones con estos nombres de parámetros/orden.
-
-**Nota (encontrada en Task 1):** `data/library_views.sql` define `vista_administradores`, que depende de `usuarios.nombre_usuario`. Esa columna desaparece en este esquema — la vista se actualiza en el Step 3 de esta tarea. `db/` (`db/01_schema.sql`, `db/06_views.sql`, etc.) es una copia numerada más vieja, sin tocar desde el mismo commit en que `data/` divergió y no referenciada por `docs/GCP_COMMANDS.md` (que solo usa `data/library_schema.sql`/`data/library_data.sql`) — está fuera de alcance de este plan, no se toca.
-
-- [ ] **Step 1: Editar `data/library_schema.sql`**
-
-En la definición de `CREATE TABLE usuarios`, quitar la columna `nombre_usuario`:
-
-```sql
-CREATE TABLE usuarios (
-    id_usuario       SERIAL PRIMARY KEY,
-    correo           VARCHAR(150) NOT NULL UNIQUE,
-    contrasena_hash  VARCHAR(255) NOT NULL,
-    rol              VARCHAR(10)  NOT NULL DEFAULT 'cliente'
-                         CHECK (rol IN ('admin','cliente')),
-    fecha_registro   TIMESTAMP    NOT NULL DEFAULT now()
-);
-```
-
-Justo después de la tabla `usuarios_auditoria_rol`, agregar:
-
-```sql
-CREATE TABLE personas (
-    id_usuario        INT PRIMARY KEY REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-    nombre            VARCHAR(100) NOT NULL,
-    apellido_paterno  VARCHAR(100) NOT NULL,
-    apellido_materno  VARCHAR(100) NOT NULL
-);
-
-CREATE TABLE codigos_verificacion (
-    id_codigo    SERIAL PRIMARY KEY,
-    id_usuario   INT NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-    codigo_hash  VARCHAR(255) NOT NULL,
-    expira_en    TIMESTAMP NOT NULL,
-    usado        BOOLEAN NOT NULL DEFAULT false,
-    creado_en    TIMESTAMP NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_codigos_verificacion_usuario ON codigos_verificacion (id_usuario);
-
-CREATE TABLE sesiones (
-    token        VARCHAR(64) PRIMARY KEY,
-    id_usuario   INT NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
-    creada_en    TIMESTAMP NOT NULL DEFAULT now(),
-    expira_en    TIMESTAMP NOT NULL
-);
-
-CREATE INDEX idx_sesiones_usuario ON sesiones (id_usuario);
-```
-
-Reemplazar `fn_crear_usuario` y `fn_actualizar_usuario` (sección `---------- usuarios ----------`):
-
-```sql
-CREATE OR REPLACE FUNCTION fn_crear_usuario(
-    p_correo VARCHAR, p_contrasena_hash VARCHAR,
-    p_nombre VARCHAR, p_apellido_paterno VARCHAR, p_apellido_materno VARCHAR,
-    p_rol VARCHAR DEFAULT 'cliente'
-) RETURNS INT AS $$
-DECLARE v_id INT;
-BEGIN
-    INSERT INTO usuarios (correo, contrasena_hash, rol)
-    VALUES (p_correo, p_contrasena_hash, p_rol)
-    RETURNING id_usuario INTO v_id;
-    INSERT INTO personas (id_usuario, nombre, apellido_paterno, apellido_materno)
-    VALUES (v_id, p_nombre, p_apellido_paterno, p_apellido_materno);
-    RETURN v_id;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION fn_actualizar_usuario(
-    p_id INT, p_correo VARCHAR,
-    p_nombre VARCHAR, p_apellido_paterno VARCHAR, p_apellido_materno VARCHAR,
-    p_rol VARCHAR
-) RETURNS BOOLEAN AS $$
-BEGIN
-    UPDATE usuarios SET correo = p_correo, rol = p_rol WHERE id_usuario = p_id;
-    UPDATE personas
-       SET nombre = p_nombre, apellido_paterno = p_apellido_paterno, apellido_materno = p_apellido_materno
-     WHERE id_usuario = p_id;
-    RETURN FOUND;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-- [ ] **Step 2: Editar `data/library_data.sql`** — actualizar las llamadas a `fn_crear_usuario` con la nueva firma. Cambiar las 3 primeras (líneas ~32-46) y las 27 restantes (líneas ~180+), por ejemplo:
-
-```sql
-SELECT fn_crear_usuario('admin@correo.test', crypt('123456', gen_salt('bf')), 'Admin', 'Sistema', 'Principal', 'admin');
-```
-
-y
-
-```sql
-SELECT fn_crear_usuario('carlos.ramirez@correo.test', crypt('123456', gen_salt('bf')), 'Carlos', 'Ramirez', 'Lopez', 'cliente');
-```
-
-(mantener el mismo correo de cada fila existente; usar nombre/apellidos de prueba razonables derivados del `nombre_usuario` original que se está reemplazando).
-
-- [ ] **Step 3: Editar `data/library_views.sql`** — `vista_administradores` depende de `usuarios.nombre_usuario`, que ya no existe. Reemplazar su definición por:
-
-```sql
-CREATE OR REPLACE VIEW vista_administradores AS
-SELECT u.id_usuario, p.nombre AS nombre_usuario, u.correo, u.fecha_registro
-FROM usuarios u
-JOIN personas p ON p.id_usuario = u.id_usuario
-WHERE u.rol = 'admin';
-```
-
-(se mantiene el nombre de columna de salida `nombre_usuario` para no romper a quien ya consulta la vista por ese nombre; el dato ahora sale de `personas.nombre`). Las otras dos vistas del archivo (`vista_catalogo_libros`, `vista_libros_stock_bajo`) no dependen de `usuarios` y no cambian.
-
-- [ ] **Step 4: Verificar con una carga limpia en una BD de prueba**
-
-Run: `createdb library_test_schema && psql -d library_test_schema -f data/library_schema.sql && psql -d library_test_schema -f data/library_data.sql && psql -d library_test_schema -f data/library_views.sql`
-Expected: los tres scripts corren sin error; `SELECT count(*) FROM personas;` en `library_test_schema` devuelve 30 (mismo número que `usuarios`); `SELECT * FROM vista_administradores;` no da error.
-
-Run: `dropdb library_test_schema`
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add data/library_schema.sql data/library_data.sql data/library_views.sql
-git commit -m "feat(db): esquema canonico usuarios+personas y datos semilla actualizados"
-```
-
----
-
-## Fase 2 — Monolito
-
-### Task 3: Actualizar el monolito para el esquema normalizado
-
-**Files:**
-- Modify: `apps/web-monolito01/src/models/usuarioModel.js`
-- Modify: `apps/web-monolito01/src/controllers/authController.js`
-- Modify: `apps/web-monolito01/src/views/auth/registro.ejs`
-- Modify: `apps/web-monolito01/src/views/usuarios/editar.ejs`
-- Modify: `apps/web-monolito01/src/views/usuarios/listar.ejs`
-- Modify: `apps/web-monolito01/src/views/partials/header.ejs`
-
-**Interfaces:**
-- Consumes: `fn_crear_usuario`/`fn_actualizar_usuario` con la firma de Task 2; tablas `usuarios`+`personas`.
-
-- [ ] **Step 1: Reescribir `usuarioModel.js`**
-
-```javascript
-const pool = require('../config/db');
-
-const UsuarioModel = {
-  async crear({ correo, contrasenaHash, nombre, apellidoPaterno, apellidoMaterno, rol = 'cliente' }) {
-    const { rows } = await pool.query(
-      'SELECT fn_crear_usuario($1,$2,$3,$4,$5,$6) AS id_usuario',
-      [correo, contrasenaHash, nombre, apellidoPaterno, apellidoMaterno, rol]
-    );
-    return rows[0].id_usuario;
-  },
-
-  async obtenerPorId(id) {
-    const { rows } = await pool.query(
-      'SELECT u.*, p.nombre, p.apellido_paterno, p.apellido_materno ' +
-      'FROM usuarios u JOIN personas p ON p.id_usuario = u.id_usuario ' +
-      'WHERE u.id_usuario = $1',
-      [id]
-    );
-    return rows[0] || null;
-  },
-
-  async obtenerPorCorreo(correo) {
-    const { rows } = await pool.query(
-      'SELECT u.*, p.nombre, p.apellido_paterno, p.apellido_materno ' +
-      'FROM usuarios u JOIN personas p ON p.id_usuario = u.id_usuario ' +
-      'WHERE u.correo = $1',
-      [correo]
-    );
-    return rows[0] || null;
-  },
-
-  async listar() {
-    const { rows } = await pool.query(
-      'SELECT u.*, p.nombre, p.apellido_paterno, p.apellido_materno ' +
-      'FROM usuarios u JOIN personas p ON p.id_usuario = u.id_usuario ' +
-      'ORDER BY u.id_usuario'
-    );
-    return rows;
-  },
-
-  async actualizar(id, { correo, nombre, apellidoPaterno, apellidoMaterno, rol }) {
-    const { rows } = await pool.query(
-      'SELECT fn_actualizar_usuario($1,$2,$3,$4,$5,$6) AS ok',
-      [id, correo, nombre, apellidoPaterno, apellidoMaterno, rol]
-    );
-    return rows[0].ok;
-  },
-
-  async eliminar(id) {
-    const { rows } = await pool.query('SELECT fn_eliminar_usuario($1) AS ok', [id]);
-    return rows[0].ok;
-  },
-
-  async existeAdmin() {
-    const { rows } = await pool.query(
-      "SELECT 1 FROM usuarios WHERE rol = 'admin' LIMIT 1"
-    );
-    return rows.length > 0;
-  }
-};
-
-module.exports = UsuarioModel;
-```
-
-- [ ] **Step 2: Actualizar `authController.js`** — quitar `nombre_usuario` y su chequeo de duplicado, pedir nombre/apellidos:
-
-```javascript
-const bcrypt = require('bcrypt');
-const UsuarioModel = require('../models/usuarioModel');
-
-const RONDAS_SAL = 10;
-
-const AuthController = {
-  mostrarRegistro(req, res) {
-    res.render('auth/registro', { error: null, valores: {} });
-  },
-
-  async registrar(req, res) {
-    const { nombre, apellido_paterno, apellido_materno, correo, contrasena, confirmar_contrasena } = req.body;
-    try {
-      if (!nombre || !apellido_paterno || !apellido_materno || !correo || !contrasena) {
-        throw new Error('Todos los campos son obligatorios.');
-      }
-      if (contrasena !== confirmar_contrasena) {
-        throw new Error('Las contrasenas no coinciden.');
-      }
-      if (contrasena.length < 6) {
-        throw new Error('La contrasena debe tener al menos 6 caracteres.');
-      }
-      const existeCorreo = await UsuarioModel.obtenerPorCorreo(correo);
-      if (existeCorreo) throw new Error('Ese correo ya esta registrado.');
-
-      const hayAdmin = await UsuarioModel.existeAdmin();
-      const rol = hayAdmin ? 'cliente' : 'admin';
-
-      const hash = await bcrypt.hash(contrasena, RONDAS_SAL);
-      const id = await UsuarioModel.crear({
-        correo,
-        contrasenaHash: hash,
-        nombre,
-        apellidoPaterno: apellido_paterno,
-        apellidoMaterno: apellido_materno,
-        rol
-      });
-
-      req.session.usuario = { id_usuario: id, nombre, correo, rol };
-      res.redirect(`${res.locals.basePath}/libros`);
-    } catch (err) {
-      res.status(400).render('auth/registro', {
-        error: err.message,
-        valores: { nombre, apellido_paterno, apellido_materno, correo }
-      });
-    }
-  },
-
-  mostrarLogin(req, res) {
-    const mensaje = req.session.mensajeError;
-    req.session.mensajeError = null;
-    res.render('auth/login', { error: mensaje || null });
-  },
-
-  async iniciarSesion(req, res) {
-    const { correo, contrasena } = req.body;
-    try {
-      const usuario = await UsuarioModel.obtenerPorCorreo(correo);
-      if (!usuario) throw new Error('Credenciales invalidas.');
-      const ok = await bcrypt.compare(contrasena, usuario.contrasena_hash);
-      if (!ok) throw new Error('Credenciales invalidas.');
-
-      req.session.usuario = {
-        id_usuario: usuario.id_usuario,
-        nombre: usuario.nombre,
-        correo: usuario.correo,
-        rol: usuario.rol
-      };
-      res.redirect(`${res.locals.basePath}/libros`);
-    } catch (err) {
-      res.status(401).render('auth/login', { error: err.message });
-    }
-  },
-
-  cerrarSesion(req, res) {
-    const basePath = res.locals.basePath;
-    req.session.destroy(() => res.redirect(`${basePath}/auth/login`));
-  }
-};
-
-module.exports = AuthController;
-```
-
-- [ ] **Step 3: Actualizar `views/auth/registro.ejs`** — reemplazar el campo único `nombre_usuario` por tres campos:
-
-```html
-<%- include('../partials/header', { titulo: 'Crear cuenta' }) %>
-  <div class="tarjeta" style="max-width:420px;margin:2rem auto;">
-    <h1>Crear cuenta</h1>
-    <% if (error) { %><div class="mensaje-error"><%= error %></div><% } %>
-    <form class="formulario" method="POST" action="<%= basePath %>/auth/registro">
-      <div>
-        <label for="nombre">Nombre</label>
-        <input type="text" id="nombre" name="nombre" value="<%= valores.nombre || '' %>" required>
-      </div>
-      <div>
-        <label for="apellido_paterno">Apellido paterno</label>
-        <input type="text" id="apellido_paterno" name="apellido_paterno" value="<%= valores.apellido_paterno || '' %>" required>
-      </div>
-      <div>
-        <label for="apellido_materno">Apellido materno</label>
-        <input type="text" id="apellido_materno" name="apellido_materno" value="<%= valores.apellido_materno || '' %>" required>
-      </div>
-      <div>
-        <label for="correo">Correo</label>
-        <input type="email" id="correo" name="correo" value="<%= valores.correo || '' %>" required>
-      </div>
-      <div>
-        <label for="contrasena">Contrasena</label>
-        <input type="password" id="contrasena" name="contrasena" minlength="6" required>
-      </div>
-      <div>
-        <label for="confirmar_contrasena">Confirmar contrasena</label>
-        <input type="password" id="confirmar_contrasena" name="confirmar_contrasena" minlength="6" required>
-      </div>
-      <button type="submit" class="btn">Registrarme</button>
-    </form>
-    <p style="margin-top:1rem;">¿Ya tienes cuenta? <a href="<%= basePath %>/auth/login">Inicia sesion</a></p>
-  </div>
-<%- include('../partials/footer') %>
-```
-
-- [ ] **Step 4: Buscar y actualizar referencias a `nombre_usuario` en las 3 vistas restantes**
-
-Run: `grep -n "nombre_usuario" apps/web-monolito01/src/views/usuarios/editar.ejs apps/web-monolito01/src/views/usuarios/listar.ejs apps/web-monolito01/src/views/partials/header.ejs`
-
-En cada resultado, reemplazar `usuario.nombre_usuario` (o el campo de formulario equivalente) por `usuario.nombre` (para mostrar) — y en `editar.ejs`, agregar los mismos tres campos de nombre/apellidos que en `registro.ejs`, precargados con `valores.nombre`, `valores.apellido_paterno`, `valores.apellido_materno`.
-
-- [ ] **Step 5: Probar manualmente el registro contra la BD migrada**
-
-Run: `cd apps/web-monolito01 && npm start` (en otra terminal)
-
-Run:
-```bash
-curl -i -X POST http://localhost:3000/auth/registro \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  --data "nombre=Prueba&apellido_paterno=Uno&apellido_materno=Dos&correo=prueba.monolito@correo.test&contrasena=123456&confirmar_contrasena=123456"
-```
-Expected: `HTTP/1.1 302 Found` (redirect a `/libros`), sin trazas de error en la consola de `npm start`.
-
-Run: `psql -U library_user -d library -c "SELECT u.correo, p.nombre, p.apellido_paterno FROM usuarios u JOIN personas p ON p.id_usuario=u.id_usuario WHERE u.correo='prueba.monolito@correo.test';"`
-Expected: una fila con `Prueba | Uno`.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add apps/web-monolito01/src/models/usuarioModel.js apps/web-monolito01/src/controllers/authController.js apps/web-monolito01/src/views/auth/registro.ejs apps/web-monolito01/src/views/usuarios/editar.ejs apps/web-monolito01/src/views/usuarios/listar.ejs apps/web-monolito01/src/views/partials/header.ejs
-git commit -m "fix(monolito): actualizar usuarios al esquema normalizado (personas)"
-```
+- [x] **Step 3: Commit** (ya hecho — `3d950b3 feat(db): tablas propias del microservicio de login (cuentas/personas/codigos_verificacion/sesiones)`).
 
 ---
 
@@ -660,8 +270,8 @@ git commit -m "feat(login): scaffold del microservicio de autenticacion"
 - Create: `apps/services/login/tests/test_repository_manual.py`
 
 **Interfaces:**
-- Consumes: `db.connection.get_connection()` (Task 4); tablas de Task 1.
-- Produces (usadas por `service.py` en Task 10):
+- Consumes: `db.connection.get_connection()` (Task 4); tablas `cuentas`/`personas`/`codigos_verificacion`/`sesiones` de Task 1.
+- Produces (usadas por `service.py` en Task 10) — nota: las tablas reales son `cuentas`/`id_cuenta`, pero el diccionario devuelto usa la clave `id_usuario` (alias en el propio SQL) para que el resto de las tareas (6-13) no necesiten saber que la tabla se llama `cuentas`:
   - `crear_usuario(correo, contrasena_hash, nombre, apellido_paterno, apellido_materno, rol="cliente") -> int`
   - `obtener_usuario_por_correo(correo) -> dict | None` (claves: `id_usuario, correo, contrasena_hash, rol, nombre`)
   - `guardar_codigo(id_usuario, codigo_hash, expira_en) -> int`
@@ -676,7 +286,12 @@ git commit -m "feat(login): scaffold del microservicio de autenticacion"
 
 ```python
 """Acceso a datos: unico modulo (junto con connection.py) que ejecuta SQL
-directamente. service.py nunca abre una conexion ni escribe SQL."""
+directamente. service.py nunca abre una conexion ni escribe SQL.
+
+Las tablas reales son cuentas/personas/codigos_verificacion/sesiones
+(independientes del monolito, ver Task 1). Las columnas id_cuenta se
+alias-ean como id_usuario en el SQL para que el resto del microservicio
+(service.py, app.py) trabaje con ese nombre sin conocer el de la tabla."""
 
 from psycopg.rows import dict_row
 from db.connection import get_connection
@@ -686,13 +301,13 @@ def crear_usuario(correo, contrasena_hash, nombre, apellido_paterno, apellido_ma
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO usuarios (correo, contrasena_hash, rol) "
-                "VALUES (%s, %s, %s) RETURNING id_usuario",
+                "INSERT INTO cuentas (correo, contrasena_hash, rol) "
+                "VALUES (%s, %s, %s) RETURNING id_cuenta",
                 (correo, contrasena_hash, rol),
             )
             id_usuario = cur.fetchone()[0]
             cur.execute(
-                "INSERT INTO personas (id_usuario, nombre, apellido_paterno, apellido_materno) "
+                "INSERT INTO personas (id_cuenta, nombre, apellido_paterno, apellido_materno) "
                 "VALUES (%s, %s, %s, %s)",
                 (id_usuario, nombre, apellido_paterno, apellido_materno),
             )
@@ -704,9 +319,9 @@ def obtener_usuario_por_correo(correo):
     with get_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT u.id_usuario, u.correo, u.contrasena_hash, u.rol, p.nombre "
-                "FROM usuarios u JOIN personas p ON p.id_usuario = u.id_usuario "
-                "WHERE u.correo = %s",
+                "SELECT c.id_cuenta AS id_usuario, c.correo, c.contrasena_hash, c.rol, p.nombre "
+                "FROM cuentas c JOIN personas p ON p.id_cuenta = c.id_cuenta "
+                "WHERE c.correo = %s",
                 (correo,),
             )
             return cur.fetchone()
@@ -716,7 +331,7 @@ def guardar_codigo(id_usuario, codigo_hash, expira_en):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO codigos_verificacion (id_usuario, codigo_hash, expira_en) "
+                "INSERT INTO codigos_verificacion (id_cuenta, codigo_hash, expira_en) "
                 "VALUES (%s, %s, %s) RETURNING id_codigo",
                 (id_usuario, codigo_hash, expira_en),
             )
@@ -730,7 +345,7 @@ def obtener_codigo_vigente(id_usuario):
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 "SELECT id_codigo, codigo_hash FROM codigos_verificacion "
-                "WHERE id_usuario = %s AND usado = false AND expira_en > now() "
+                "WHERE id_cuenta = %s AND usado = false AND expira_en > now() "
                 "ORDER BY creado_en DESC LIMIT 1",
                 (id_usuario,),
             )
@@ -751,7 +366,7 @@ def crear_sesion(token, id_usuario, expira_en):
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO sesiones (token, id_usuario, expira_en) VALUES (%s, %s, %s)",
+                "INSERT INTO sesiones (token, id_cuenta, expira_en) VALUES (%s, %s, %s)",
                 (token, id_usuario, expira_en),
             )
         conn.commit()
@@ -761,10 +376,10 @@ def obtener_sesion_vigente(token):
     with get_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT s.id_usuario, u.correo, p.nombre "
+                "SELECT s.id_cuenta AS id_usuario, c.correo, p.nombre "
                 "FROM sesiones s "
-                "JOIN usuarios u ON u.id_usuario = s.id_usuario "
-                "JOIN personas p ON p.id_usuario = s.id_usuario "
+                "JOIN cuentas c ON c.id_cuenta = s.id_cuenta "
+                "JOIN personas p ON p.id_cuenta = s.id_cuenta "
                 "WHERE s.token = %s AND s.expira_en > now()",
                 (token,),
             )
@@ -795,7 +410,7 @@ Run: `psql -U library_user -d library -c "ALTER ROLE auth_service_user WITH PASS
 
 ```python
 """Prueba manual de repository.py contra una base de datos real (requiere
-que data/migrations/2026-09-18_normalizar_usuarios.sql ya este aplicado).
+que data/migrations/2026-09-18_tablas_login.sql ya este aplicado).
 No usa ningun framework de pruebas: son asserts planos sobre datos que la
 propia prueba crea y limpia.
 
@@ -813,7 +428,7 @@ CORREO_PRUEBA = "repo.prueba@correo.test"
 def limpiar():
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM usuarios WHERE correo = %s", (CORREO_PRUEBA,))
+            cur.execute("DELETE FROM cuentas WHERE correo = %s", (CORREO_PRUEBA,))
         conn.commit()
 
 
@@ -876,6 +491,7 @@ git commit -m "feat(login): capa de acceso a datos (repository.py)"
 ```
 
 ---
+
 
 ### Task 6: Seguridad pura (`auth/security.py`)
 
@@ -1433,7 +1049,7 @@ CORREO_PRUEBA = "service.prueba@correo.test"
 def limpiar():
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM usuarios WHERE correo = %s", (CORREO_PRUEBA,))
+            cur.execute("DELETE FROM cuentas WHERE correo = %s", (CORREO_PRUEBA,))
         conn.commit()
 
 
@@ -2051,12 +1667,12 @@ git commit -m "docs(login): README del microservicio de autenticacion"
 
 ## Cobertura del spec
 
-- Registro con nombre/apellidos/email/password, email único y validado, password hasheada → Tasks 1, 2, 6, 10.
+- Registro con nombre/apellidos/email/password, email único y validado, password hasheada → Tasks 1, 6, 10.
 - Login + 2FA por correo (SMTP propio, local) → Tasks 9, 10, 11.
 - Sesión de 30 min por token propio, `/session`, `/logout` → Tasks 5, 10, 11.
 - `/health` con verificación real de Postgres → Tasks 5, 10, 11.
 - XML default / `?format=json` en todos los endpoints → Task 7, 11.
 - Puerto 5000, rol de BD de mínimo privilegio → Tasks 1, 4, 11.
 - Swagger con ejemplos XML y JSON → Task 11.
-- Monolito sigue funcionando tras la migración → Task 3.
+- Monolito no se toca (tablas propias, sin FK ni cambios en `usuarios`) → Task 1.
 - Validación real desde la instancia, sin interfaz gráfica → Task 12.
