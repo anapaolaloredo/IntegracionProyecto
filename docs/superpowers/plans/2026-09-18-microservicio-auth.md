@@ -40,9 +40,21 @@
 -- Migracion: normaliza usuarios (persona vs credenciales) para el
 -- microservicio de autenticacion (apps/services/login).
 -- Ejecutar UNA sola vez, contra una base de datos que ya tiene cargado
--- data/library_schema.sql (+ opcionalmente data/library_data.sql):
---   psql -U library_user -d library -f data/migrations/2026-09-18_normalizar_usuarios.sql
+-- data/library_schema.sql (+ opcionalmente data/library_views.sql y
+-- data/library_data.sql). Requiere un rol con privilegio para CREATE ROLE
+-- (el rol de aplicacion library_user NO lo tiene): en la instancia GCP,
+-- usar el rol postgres (`sudo -u postgres psql -d library -f ...`, mismo
+-- patron que ya usa sql/soap_module.sql); en local, el superusuario de tu
+-- propio Postgres (p.ej. `psql -d library -f ...` sin -U, si tu usuario de
+-- SO ya es superusuario).
 -- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 0. vista_administradores depende de usuarios.nombre_usuario (ver
+--    data/library_views.sql) - hay que soltarla antes del DROP COLUMN del
+--    paso 2 y recrearla contra el esquema nuevo.
+-- ---------------------------------------------------------------------
+DROP VIEW IF EXISTS vista_administradores;
 
 -- ---------------------------------------------------------------------
 -- 1. Tabla personas (1:1 con usuarios) + backfill desde nombre_usuario
@@ -67,6 +79,15 @@ ON CONFLICT (id_usuario) DO NOTHING;
 -- ---------------------------------------------------------------------
 ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_nombre_usuario_key;
 ALTER TABLE usuarios DROP COLUMN IF EXISTS nombre_usuario;
+
+-- Recrear vista_administradores contra el esquema nuevo (mismo nombre de
+-- columna de salida `nombre_usuario`, para no romper a quien ya la usa,
+-- pero ahora resuelto desde personas.nombre).
+CREATE OR REPLACE VIEW vista_administradores AS
+SELECT u.id_usuario, p.nombre AS nombre_usuario, u.correo, u.fecha_registro
+FROM usuarios u
+JOIN personas p ON p.id_usuario = u.id_usuario
+WHERE u.rol = 'admin';
 
 -- ---------------------------------------------------------------------
 -- 3. Tablas propias del microservicio de login
@@ -115,11 +136,11 @@ GRANT USAGE, SELECT ON SEQUENCE codigos_verificacion_id_codigo_seq TO auth_servi
 
 - [ ] **Step 2: Aplicar la migración contra la BD local y verificar**
 
-Run: `psql -U library_user -d library -f data/migrations/2026-09-18_normalizar_usuarios.sql`
+Run (como superusuario de Postgres — `library_user` no tiene privilegio CREATE ROLE): `psql -d library -f data/migrations/2026-09-18_normalizar_usuarios.sql` (si tu conexión por defecto no es superusuario, usa `psql -U <tu-superusuario-local> -d library -f ...`)
 Expected: sin errores. Luego:
 
-Run: `psql -U library_user -d library -c "\d personas" -c "\d codigos_verificacion" -c "\d sesiones" -c "\d usuarios"`
-Expected: `personas`, `codigos_verificacion` y `sesiones` existen con las columnas de arriba; `usuarios` ya NO tiene la columna `nombre_usuario`; `personas` tiene tantas filas como `usuarios` (backfill aplicado).
+Run: `psql -U library_user -d library -c "\d personas" -c "\d codigos_verificacion" -c "\d sesiones" -c "\d usuarios" -c "\d vista_administradores"`
+Expected: `personas`, `codigos_verificacion` y `sesiones` existen con las columnas de arriba; `usuarios` ya NO tiene la columna `nombre_usuario`; `personas` tiene tantas filas como `usuarios` (backfill aplicado); `vista_administradores` existe y `SELECT * FROM vista_administradores;` no da error.
 
 - [ ] **Step 3: Commit**
 
@@ -135,10 +156,13 @@ git commit -m "feat(db): migrar usuarios a personas + tablas del microservicio d
 **Files:**
 - Modify: `data/library_schema.sql`
 - Modify: `data/library_data.sql`
+- Modify: `data/library_views.sql`
 
 **Interfaces:**
 - Consumes: estructura de tablas definida en Task 1.
 - Produces: `fn_crear_usuario(p_correo, p_contrasena_hash, p_nombre, p_apellido_paterno, p_apellido_materno, p_rol)` y `fn_actualizar_usuario(p_id, p_correo, p_nombre, p_apellido_paterno, p_apellido_materno, p_rol)` con la nueva firma — el monolito (Task 3) llama estas funciones con estos nombres de parámetros/orden.
+
+**Nota (encontrada en Task 1):** `data/library_views.sql` define `vista_administradores`, que depende de `usuarios.nombre_usuario`. Esa columna desaparece en este esquema — la vista se actualiza en el Step 3 de esta tarea. `db/` (`db/01_schema.sql`, `db/06_views.sql`, etc.) es una copia numerada más vieja, sin tocar desde el mismo commit en que `data/` divergió y no referenciada por `docs/GCP_COMMANDS.md` (que solo usa `data/library_schema.sql`/`data/library_data.sql`) — está fuera de alcance de este plan, no se toca.
 
 - [ ] **Step 1: Editar `data/library_schema.sql`**
 
@@ -234,17 +258,29 @@ SELECT fn_crear_usuario('carlos.ramirez@correo.test', crypt('123456', gen_salt('
 
 (mantener el mismo correo de cada fila existente; usar nombre/apellidos de prueba razonables derivados del `nombre_usuario` original que se está reemplazando).
 
-- [ ] **Step 3: Verificar con una carga limpia en una BD de prueba**
+- [ ] **Step 3: Editar `data/library_views.sql`** — `vista_administradores` depende de `usuarios.nombre_usuario`, que ya no existe. Reemplazar su definición por:
 
-Run: `createdb library_test_schema && psql -d library_test_schema -f data/library_schema.sql && psql -d library_test_schema -f data/library_data.sql`
-Expected: ambos scripts corren sin error; `SELECT count(*) FROM personas;` en `library_test_schema` devuelve 30 (mismo número que `usuarios`).
+```sql
+CREATE OR REPLACE VIEW vista_administradores AS
+SELECT u.id_usuario, p.nombre AS nombre_usuario, u.correo, u.fecha_registro
+FROM usuarios u
+JOIN personas p ON p.id_usuario = u.id_usuario
+WHERE u.rol = 'admin';
+```
+
+(se mantiene el nombre de columna de salida `nombre_usuario` para no romper a quien ya consulta la vista por ese nombre; el dato ahora sale de `personas.nombre`). Las otras dos vistas del archivo (`vista_catalogo_libros`, `vista_libros_stock_bajo`) no dependen de `usuarios` y no cambian.
+
+- [ ] **Step 4: Verificar con una carga limpia en una BD de prueba**
+
+Run: `createdb library_test_schema && psql -d library_test_schema -f data/library_schema.sql && psql -d library_test_schema -f data/library_data.sql && psql -d library_test_schema -f data/library_views.sql`
+Expected: los tres scripts corren sin error; `SELECT count(*) FROM personas;` en `library_test_schema` devuelve 30 (mismo número que `usuarios`); `SELECT * FROM vista_administradores;` no da error.
 
 Run: `dropdb library_test_schema`
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add data/library_schema.sql data/library_data.sql
+git add data/library_schema.sql data/library_data.sql data/library_views.sql
 git commit -m "feat(db): esquema canonico usuarios+personas y datos semilla actualizados"
 ```
 

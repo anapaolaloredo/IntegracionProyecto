@@ -2,9 +2,21 @@
 -- Migracion: normaliza usuarios (persona vs credenciales) para el
 -- microservicio de autenticacion (apps/services/login).
 -- Ejecutar UNA sola vez, contra una base de datos que ya tiene cargado
--- data/library_schema.sql (+ opcionalmente data/library_data.sql):
---   psql -U library_user -d library -f data/migrations/2026-09-18_normalizar_usuarios.sql
+-- data/library_schema.sql (+ opcionalmente data/library_views.sql y
+-- data/library_data.sql). Requiere un rol con privilegio para CREATE ROLE
+-- (el rol de aplicacion library_user NO lo tiene): en la instancia GCP,
+-- usar el rol postgres (`sudo -u postgres psql -d library -f ...`, mismo
+-- patron que ya usa sql/soap_module.sql); en local, el superusuario de tu
+-- propio Postgres (p.ej. `psql -d library -f ...` sin -U, si tu usuario de
+-- SO ya es superusuario).
 -- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- 0. vista_administradores depende de usuarios.nombre_usuario (ver
+--    data/library_views.sql) - hay que soltarla antes del DROP COLUMN del
+--    paso 2 y recrearla contra el esquema nuevo.
+-- ---------------------------------------------------------------------
+DROP VIEW IF EXISTS vista_administradores;
 
 -- ---------------------------------------------------------------------
 -- 1. Tabla personas (1:1 con usuarios) + backfill desde nombre_usuario
@@ -29,6 +41,15 @@ ON CONFLICT (id_usuario) DO NOTHING;
 -- ---------------------------------------------------------------------
 ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_nombre_usuario_key;
 ALTER TABLE usuarios DROP COLUMN IF EXISTS nombre_usuario;
+
+-- Recrear vista_administradores contra el esquema nuevo (mismo nombre de
+-- columna de salida `nombre_usuario`, para no romper a quien ya la usa,
+-- pero ahora resuelto desde personas.nombre).
+CREATE OR REPLACE VIEW vista_administradores AS
+SELECT u.id_usuario, p.nombre AS nombre_usuario, u.correo, u.fecha_registro
+FROM usuarios u
+JOIN personas p ON p.id_usuario = u.id_usuario
+WHERE u.rol = 'admin';
 
 -- ---------------------------------------------------------------------
 -- 3. Tablas propias del microservicio de login
