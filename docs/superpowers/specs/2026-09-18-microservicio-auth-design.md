@@ -7,8 +7,18 @@ Fuente: `05_prompt_microservicio_auth.md` + aclaraciones en conversación (2026-
 Microservicio Flask + Psycopg 3 + PostgreSQL, independiente del monolito
 (`apps/web-monolito01`), que registra usuarios, autentica con segundo factor
 por correo (2FA), y expone sesiones de 30 minutos. Responde XML (default) o
-JSON según `?format=`. No hace llamadas HTTP hacia/desde el monolito; solo
-comparte la base de datos física `library`.
+JSON según `?format=`. No hace llamadas HTTP hacia/desde el monolito, y
+**no toca ninguna tabla del monolito** (usa tablas propias en la misma base
+de datos física `library` — ver sección 3).
+
+> **Actualización 2026-09-18:** la primera versión de este documento
+> normalizaba la tabla `usuarios` del monolito (dividiéndola en
+> `usuarios`+`personas`) y requería actualizar el monolito para que
+> siguiera funcionando. Se descartó esa vía por costo/tiempo — mientras se
+> implementaba apareció una vista (`vista_administradores`) que dependía de
+> la columna a eliminar. Se sustituyó por tablas nuevas e independientes
+> (`cuentas`/`personas`/`codigos_verificacion`/`sesiones`), sin tocar el
+> monolito en absoluto. Las secciones 3 y 6 reflejan ya la versión vigente.
 
 ## 2. Arquitectura y componentes
 
@@ -17,8 +27,9 @@ comparte la base de datos física `library`.
   `requirements.txt`, `.env`, `.env.example`, `README.md`).
 - **Puerto:** 5000.
 - **Rol de BD:** `auth_service_user`, mínimo privilegio, análogo a
-  `soap_service_user`, con permisos solo sobre las tablas que le tocan
-  (`usuarios`, `personas`, `codigos_verificacion`, `sesiones`).
+  `soap_service_user`, con permisos solo sobre las tablas propias del
+  microservicio (`cuentas`, `personas`, `codigos_verificacion`, `sesiones`)
+  — ninguna tabla del monolito.
 - **Correo (2FA):** Postfix instalado a nivel de sistema operativo en la
   misma instancia de GCP, configurado **solo para entrega local**
   (`mydestination = localhost, <hostname-instancia>`, sin relay externo).
@@ -31,66 +42,59 @@ comparte la base de datos física `library`.
   TLS (todo el tráfico es loopback). Nada de este flujo sale de la instancia
   ni depende de un proveedor externo (Gmail, SendGrid, etc.) — cumple el
   requisito del profesor de "SMTP propio, local, no externo".
-- **Monolito:** se actualiza su modelo/controlador/vistas de usuarios para
-  seguir funcionando contra el esquema normalizado (ver sección 6), pero
-  sigue siendo un sistema aparte: comparte la base de datos, no el código.
+- **Monolito:** no se toca. Ni su código, ni su tabla `usuarios`, ni sus
+  vistas/funciones. El microservicio tiene su propio registro de cuentas,
+  separado del de la tienda — un usuario que ya existe en el monolito no
+  existe automáticamente aquí, y viceversa (aceptado explícitamente para no
+  invertir tiempo en normalizar una tabla ajena en producción).
 
 ## 3. Modelo de datos
 
-Se normaliza `usuarios` en dos tablas (1:1 por `id_usuario`), más dos tablas
-propias del microservicio:
+Cuatro tablas nuevas, todas propias del microservicio, sin FK hacia
+ninguna tabla del monolito:
 
 ```sql
--- Reemplaza a la usuarios actual (se quita nombre_usuario)
-usuarios (
-  id_usuario       SERIAL PRIMARY KEY,
+-- Identidad/credenciales (propia del microservicio, NO es usuarios del monolito)
+cuentas (
+  id_cuenta        SERIAL PRIMARY KEY,
   correo           VARCHAR(150) NOT NULL UNIQUE,
   contrasena_hash  VARCHAR(255) NOT NULL,
   rol              VARCHAR(10)  NOT NULL DEFAULT 'cliente' CHECK (rol IN ('admin','cliente')),
   fecha_registro   TIMESTAMP    NOT NULL DEFAULT now()
 )
 
--- Nueva, 1:1 con usuarios
+-- Datos de persona, 1:1 con cuentas
 personas (
-  id_usuario        INT PRIMARY KEY REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+  id_cuenta         INT PRIMARY KEY REFERENCES cuentas(id_cuenta) ON DELETE CASCADE,
   nombre            VARCHAR(100) NOT NULL,
   apellido_paterno  VARCHAR(100) NOT NULL,
   apellido_materno  VARCHAR(100) NOT NULL
 )
 
--- Propia del microservicio de login
+-- Códigos 2FA pendientes
 codigos_verificacion (
   id_codigo    SERIAL PRIMARY KEY,
-  id_usuario   INT NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+  id_cuenta    INT NOT NULL REFERENCES cuentas(id_cuenta) ON DELETE CASCADE,
   codigo_hash  VARCHAR(255) NOT NULL,
   expira_en    TIMESTAMP NOT NULL,
   usado        BOOLEAN NOT NULL DEFAULT false,
   creado_en    TIMESTAMP NOT NULL DEFAULT now()
 )
 
--- Propia del microservicio de login
+-- Sesiones activas
 sesiones (
   token        VARCHAR(64) PRIMARY KEY,
-  id_usuario   INT NOT NULL REFERENCES usuarios(id_usuario) ON DELETE CASCADE,
+  id_cuenta    INT NOT NULL REFERENCES cuentas(id_cuenta) ON DELETE CASCADE,
   creada_en    TIMESTAMP NOT NULL DEFAULT now(),
   expira_en    TIMESTAMP NOT NULL
 )
 ```
 
-Se conservan tal cual (no dependen de `nombre_usuario`):
-`usuarios_auditoria_rol`, `trg_usuarios_auditoria_rol`,
-`uq_usuarios_admin_unico`.
-
-**Migración** (script nuevo en `data/`, no se reescribe `library_schema.sql`
-desde cero):
-1. Crear `personas`, `codigos_verificacion`, `sesiones`.
-2. Copiar `nombre_usuario` → `personas.nombre` para las filas existentes
-   (apellidos quedan vacíos/placeholder, a rellenar manualmente para los 30
-   usuarios semilla — son datos de prueba, no de producción).
-3. Eliminar la columna `usuarios.nombre_usuario` y su índice/constraint
-   asociado.
-4. Actualizar `fn_crear_usuario` / `fn_actualizar_usuario` en
-   `data/library_schema.sql` para reflejar el nuevo esquema.
+Un solo script SQL aditivo (`CREATE TABLE`, sin `ALTER`/`DROP` sobre nada
+existente) crea las 4 tablas y el rol `auth_service_user`. El campo
+`id_usuario` que expone la API pública (sección 4) es el `id_cuenta`
+interno, aliaseado en la capa de acceso a datos — el contrato HTTP no
+cambia por este rediseño interno.
 
 ## 4. Endpoints
 
@@ -118,22 +122,9 @@ Todos aceptan `?format=json`; sin el parámetro, XML es el default.
 
 ## 6. Cambios en el monolito
 
-Archivos ya localizados que requieren cambio:
-
-- `data/library_schema.sql`: `fn_crear_usuario` / `fn_actualizar_usuario`
-  cambian de `p_nombre_usuario` a los datos de `personas`.
-- `apps/web-monolito01/src/models/usuarioModel.js`: quitar
-  `obtenerPorNombreUsuario`; `crear`/`actualizar` reciben nombre/apellidos e
-  insertan/actualizan en `usuarios` + `personas`.
-- `apps/web-monolito01/src/controllers/authController.js`: `registrar()` deja
-  de pedir `nombre_usuario` y de chequear duplicado de username.
-- `apps/web-monolito01/src/views/auth/registro.ejs`,
-  `views/usuarios/editar.ejs`, `views/usuarios/listar.ejs`,
-  `views/partials/header.ejs`: cambian el campo "nombre de usuario" por
-  nombre/apellidos.
-- El login del monolito (`authController.iniciarSesion`) no cambia de forma
-  (correo + contraseña); el 2FA es exclusivo del microservicio nuevo, el
-  monolito no lo usa.
+**Ninguno.** El monolito no se toca — ni su código, ni `usuarios`, ni sus
+vistas/funciones/triggers. El microservicio de login tiene su propio
+registro de cuentas (sección 3), completamente separado.
 
 ## 7. Documentación (Swagger)
 
