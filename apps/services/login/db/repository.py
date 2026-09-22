@@ -89,7 +89,9 @@ def obtener_sesion_vigente(token):
     with get_connection() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
-                "SELECT s.id_cuenta AS id_usuario, c.correo, p.nombre "
+                "SELECT s.id_cuenta AS id_usuario, c.correo, p.nombre, s.expira_en, "
+                "GREATEST(0, EXTRACT(EPOCH FROM (s.expira_en - now()::timestamp)))::int "
+                "AS segundos_restantes "
                 "FROM sesiones s "
                 "JOIN cuentas c ON c.id_cuenta = s.id_cuenta "
                 "JOIN personas p ON p.id_cuenta = s.id_cuenta "
@@ -97,6 +99,16 @@ def obtener_sesion_vigente(token):
                 (token,),
             )
             return cur.fetchone()
+
+
+def extender_sesion(token, expira_en):
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE sesiones SET expira_en = %s WHERE token = %s",
+                (expira_en, token),
+            )
+        conn.commit()
 
 
 def eliminar_sesion(token):

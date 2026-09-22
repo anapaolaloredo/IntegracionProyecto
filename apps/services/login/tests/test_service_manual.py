@@ -57,7 +57,12 @@ def main():
         estado = service.consultar_sesion(token)
         assert estado["autenticado"] is True
         assert estado["email"] == CORREO_PRUEBA
+        assert 0 < estado["segundos_restantes"] <= 30 * 60
         print("consultar_sesion(token valido) OK")
+
+        extendida = service.extender_sesion(token)
+        assert extendida["segundos_restantes"] >= estado["segundos_restantes"]
+        print("extender_sesion OK")
 
         service.cerrar_sesion(token)
         estado_tras_logout = service.consultar_sesion(token)
@@ -69,6 +74,12 @@ def main():
             raise AssertionError("Debio lanzar SesionInvalida")
         except SesionInvalida:
             print("cerrar_sesion sobre token ya cerrado OK")
+
+        try:
+            service.extender_sesion(token)
+            raise AssertionError("Debio lanzar SesionInvalida")
+        except SesionInvalida:
+            print("extender_sesion sobre token cerrado OK")
 
     assert service.verificar_salud() is True
     print("verificar_salud OK")

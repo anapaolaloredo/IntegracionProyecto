@@ -75,6 +75,20 @@ def consultar_sesion(token):
         "id_usuario": sesion["id_usuario"],
         "email": sesion["correo"],
         "nombre": sesion["nombre"],
+        "expira_en": sesion["expira_en"].isoformat(),
+        "segundos_restantes": sesion["segundos_restantes"],
+    }
+
+
+def extender_sesion(token):
+    if not token or not repository.obtener_sesion_vigente(token):
+        raise SesionInvalida("Token de sesion invalido o expirado.")
+    expira_en = datetime.now(timezone.utc) + timedelta(minutes=SESSION_TTL_MINUTES)
+    repository.extender_sesion(token, expira_en)
+    sesion = repository.obtener_sesion_vigente(token)
+    return {
+        "expira_en": sesion["expira_en"].isoformat(),
+        "segundos_restantes": sesion["segundos_restantes"],
     }
 
 

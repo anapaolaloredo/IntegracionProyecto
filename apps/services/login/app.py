@@ -174,6 +174,31 @@ def session_status():
     return responder("sesion", service.consultar_sesion(_token_de_header()))
 
 
+@app.route("/session/extend", methods=["POST"])
+def session_extend():
+    """
+    Extiende la sesion del token dado otros SESSION_TTL_MINUTES (30) a partir de ahora.
+    ---
+    parameters:
+      - in: header
+        name: Authorization
+        type: string
+        required: true
+        description: "Bearer <session_token>"
+      - in: query
+        name: format
+        type: string
+        enum: [xml, json]
+        default: xml
+    responses:
+      200:
+        description: "Sesion extendida. JSON: {\\"expira_en\\": \\"...\\", \\"segundos_restantes\\": 1800}"
+      401:
+        description: Token invalido, expirado o ausente
+    """
+    return responder("sesion", service.extender_sesion(_token_de_header()))
+
+
 @app.route("/health", methods=["GET"])
 def health():
     """
