@@ -19,6 +19,17 @@ pip install -r requirements.txt
 python main.py
 ```
 
+> **macOS con iCloud ("Escritorio y Documentos")**: si el proyecto esta en
+> `~/Documents`, crea el venv FUERA de esa carpeta. iCloud deja las carpetas
+> de plugins de Qt en un estado que Qt no puede listar y la app falla con
+> `Could not find the Qt platform plugin "cocoa"`:
+>
+> ```bash
+> python3 -m venv ~/.venvs/libreria-escritorio
+> ~/.venvs/libreria-escritorio/bin/pip install -r requirements.txt
+> ~/.venvs/libreria-escritorio/bin/python main.py
+> ```
+
 Pruebas del nucleo (sin interfaz): `python -m pytest tests -q`
 
 ## Configuracion del servidor

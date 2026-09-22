@@ -35,7 +35,8 @@ class SesionExpirada(ServiceError):
 MENSAJES_STATUS = {
     400: "El servicio rechazó los datos enviados.",
     401: "No autorizado.",
-    403: "Acceso denegado por el servidor.",
+    403: "Acceso denegado por el servidor. ¿La URL apunta al microservicio correcto? "
+         "(En macOS, localhost:5000 es AirPlay; revisa Configuración del servidor)",
     404: "No se encontró el recurso solicitado.",
     405: "El servidor no admite esta operación en esa URL (¿URL o puerto incorrecto?).",
     409: "El recurso ya existe.",
