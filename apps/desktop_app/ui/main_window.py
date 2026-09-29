@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QDockWidget, QFormLayout, QGroupBox, QHBoxLayout,
                                QPushButton, QTabWidget, QVBoxLayout, QWidget)
 
 from core.health import comprobar_libros, comprobar_login
-from core.http import SesionExpirada
+from core.http import SesionExpirada, log_terminal
 from ui.admin_tab import AdminTab
 from ui.async_task import ejecutar
 from ui.catalog_tab import CatalogTab
@@ -165,6 +165,7 @@ class MainWindow(QMainWindow):
         vc.setContentsMargins(0, 0, 0, 0)
         vc.addWidget(self.banner)
         vc.addWidget(self.tabs)
+        self.tabs.currentChanged.connect(self._vista_cambio)
         self.setCentralWidget(centro)
 
         dock = QDockWidget("Registro de peticiones HTTP", self)
@@ -243,6 +244,9 @@ class MainWindow(QMainWindow):
         color = " color: #c62828;" if cerca else ""
         self.sesion.restante.setStyleSheet("font-size: 18px; font-weight: bold;" + color)
         self.banner_texto.setText(f"⚠️  Tu sesión expira en {texto}. Extiéndela para no perder el acceso.")
+
+    def _vista_cambio(self, indice):
+        log_terminal("UI", f"vista -> {self.tabs.tabText(indice)}  |  token en uso: Bearer {self.token}")
 
     def extender_sesion(self):
         token = self.token

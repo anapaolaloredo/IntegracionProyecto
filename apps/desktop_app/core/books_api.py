@@ -6,13 +6,16 @@ Rutas existentes del servicio (no se renombran):
   GET    /api/libros/<isbn>        detalle (incluye conceptos)
   POST   /api/libros               crear
   PUT    /api/libros/<isbn>        actualizar
-  DELETE /api/libros/<isbn>        eliminar"""
+  DELETE /api/libros/<isbn>        eliminar
+
+Las lecturas (GET) son publicas. POST, PUT y DELETE mandan
+Authorization: Bearer <token de sesion de login>."""
 
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
-from core.http import ServiceError, mensaje_para_status
+from core.http import ServiceError, SesionExpirada, mensaje_para_status
 
 
 @dataclass
@@ -90,8 +93,21 @@ def parsear_libros(xml_bytes):
 
 
 class BooksApi:
-    def __init__(self, http):
+    def __init__(self, http, obtener_token=lambda: None):
         self.http = http
+        self.obtener_token = obtener_token  # se consulta en cada escritura: el token cambia entre sesiones
+
+    def _escribir(self, metodo, ruta, json_body=None):
+        token = self.obtener_token()
+        if not token:
+            raise SesionExpirada("No hay una sesión iniciada. Inicia sesión para modificar el catálogo.",
+                                 kind="http", status=401)
+        resp = self.http.request(metodo, ruta, json_body=json_body,
+                                 headers={"Authorization": f"Bearer {token}"})
+        if resp.status_code == 401:
+            raise SesionExpirada("Tu sesión expiró o ya no es válida. Inicia sesión de nuevo (HTTP 401).",
+                                 kind="http", status=401)
+        return resp
 
     def _libros(self, resp, ok=(200,), mensajes=None):
         if resp.status_code in ok:
@@ -118,18 +134,18 @@ class BooksApi:
         return libros[0]
 
     def crear(self, libro):
-        resp = self.http.request("POST", "/api/libros", json_body=libro.a_payload())
+        resp = self._escribir("POST", "/api/libros", libro.a_payload())
         return self._libros(resp, ok=(201,), mensajes={
             409: f"Ya existe un libro con ISBN {libro.isbn} (HTTP 409). Usa otro ISBN o actualiza el existente."})[0]
 
     def actualizar(self, isbn, libro):
         payload = libro.a_payload()
         payload.pop("isbn")  # el ISBN va en la URL; el servicio no lo modifica
-        resp = self.http.request("PUT", self._ruta_isbn(isbn), json_body=payload)
+        resp = self._escribir("PUT", self._ruta_isbn(isbn), payload)
         return self._libros(resp, mensajes={404: f"No existe un libro con ISBN {isbn} (HTTP 404)."})[0]
 
     def eliminar(self, isbn):
-        resp = self.http.request("DELETE", self._ruta_isbn(isbn))
+        resp = self._escribir("DELETE", self._ruta_isbn(isbn))
         if resp.status_code != 200:
             mensajes = {404: f"No existe un libro con ISBN {isbn} (HTTP 404)."}
             raise ServiceError(mensajes.get(resp.status_code) or mensaje_para_status(resp), status=resp.status_code)

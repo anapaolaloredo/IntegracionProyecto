@@ -4,6 +4,7 @@ traceback). Cada peticion se reporta a un callback para el registro HTTP."""
 
 import json
 import time
+from datetime import datetime
 import xml.etree.ElementTree as ET
 
 import requests
@@ -77,6 +78,11 @@ def mensaje_para_status(resp):
     return f"{generico} (HTTP {resp.status_code})"
 
 
+def log_terminal(etiqueta, texto):
+    """Evidencia en la terminal, estilo log: hora, etiqueta y mensaje."""
+    print(f"[{datetime.now():%H:%M:%S}] [{etiqueta}] {texto}", flush=True)
+
+
 class HttpClient:
     def __init__(self, nombre_servicio, base_url, timeout, on_log=None):
         self.nombre_servicio = nombre_servicio
@@ -91,6 +97,9 @@ class HttpClient:
         inicio = time.monotonic()
         entrada = {"servicio": self.nombre_servicio, "metodo": metodo, "url": url,
                    "params": params, "body": json_body}
+        auth = (headers or {}).get("Authorization")
+        log_terminal("HTTP", f"-> {metodo} {url}  |  Authorization: "
+                             f"{auth if auth else '(sin token, endpoint publico)'}")
         try:
             resp = requests.request(metodo, url, params=params, json=json_body,
                                     headers=headers, timeout=self.timeout)
@@ -112,8 +121,10 @@ class HttpClient:
                                  kind="conexion")
         else:
             self._log(entrada, inicio, status=resp.status_code)
+            log_terminal("HTTP", f"<- {resp.status_code} {metodo} {url}  ({int((time.monotonic() - inicio) * 1000)} ms)")
             return resp
         self._log(entrada, inicio, error=str(error))
+        log_terminal("HTTP", f"<- ERROR {metodo} {url}  ({int((time.monotonic() - inicio) * 1000)} ms): {error}")
         raise error
 
     def _log(self, entrada, inicio, status=None, error=None):

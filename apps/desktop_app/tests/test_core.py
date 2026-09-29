@@ -94,3 +94,52 @@ def test_url_invalida_es_error_legible():
     with pytest.raises(ServiceError) as exc:
         HttpClient("Libros", "http://", 2).request("GET", "/api/libros")
     assert exc.value.sin_conexion
+
+
+# ---- escritura autenticada en books ----
+
+class _Resp:
+    def __init__(self, status, content=b""):
+        self.status_code, self.content, self.text = status, content, content.decode()
+
+
+class _HttpFalso:
+    def __init__(self, resp):
+        self.resp, self.llamadas = resp, []
+
+    def request(self, metodo, ruta, *, params=None, json_body=None, headers=None):
+        self.llamadas.append((metodo, headers))
+        return self.resp
+
+
+def _api(resp, token="tok"):
+    from core.books_api import BooksApi
+    http = _HttpFalso(resp)
+    return BooksApi(http, lambda: token), http
+
+
+def test_escrituras_mandan_bearer():
+    api, http = _api(_Resp(200))
+    api.eliminar("111")
+    assert http.llamadas == [("DELETE", {"Authorization": "Bearer tok"})]
+
+
+def test_lecturas_no_mandan_token():
+    api, http = _api(_Resp(200, XML))
+    api.listar()
+    assert http.llamadas == [("GET", None)]
+
+
+def test_escritura_sin_sesion_no_llega_al_servidor():
+    from core.http import SesionExpirada
+    api, http = _api(_Resp(200), token=None)
+    with pytest.raises(SesionExpirada):
+        api.eliminar("111")
+    assert http.llamadas == []
+
+
+def test_401_en_escritura_es_sesion_expirada():
+    from core.http import SesionExpirada
+    api, _ = _api(_Resp(401))
+    with pytest.raises(SesionExpirada):
+        api.eliminar("111")

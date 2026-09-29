@@ -30,6 +30,7 @@ class Controlador:
         self.config = AppConfig.load()
         self.registro = RegistroHttp()
         self.ventana = None
+        self.token_sesion = None
         self._construir_clientes()
 
     def _construir_clientes(self):
@@ -37,7 +38,7 @@ class Controlador:
         self.http_login = HttpClient("Login", self.config.login_url, self.config.timeout, log)
         self.http_libros = HttpClient("Libros", self.config.books_url, self.config.timeout, log)
         self.auth = AuthApi(self.http_login)
-        self.libros = BooksApi(self.http_libros)
+        self.libros = BooksApi(self.http_libros, lambda: self.token_sesion)
 
     def aplicar_config(self, config):
         self.config = config
@@ -84,6 +85,7 @@ class Controlador:
         self._cambiar_ventana(login)
 
     def sesion_iniciada(self, token, email):
+        self.token_sesion = token
         try:
             session_store.guardar(token, email)
         except OSError:
@@ -93,6 +95,7 @@ class Controlador:
     def sesion_cerrada(self, ventana, motivo=None, error=True):
         if ventana is not self.ventana:
             return
+        self.token_sesion = None
         session_store.borrar()
         self.mostrar_login(motivo)
         if motivo and not error:

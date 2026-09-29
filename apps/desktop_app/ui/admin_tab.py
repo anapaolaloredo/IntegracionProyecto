@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLin
                                QPlainTextEdit, QPushButton, QVBoxLayout, QWidget)
 
 from core.books_api import Imagen, Libro
+from core.http import SesionExpirada
 from ui.async_task import ejecutar
 from ui.common import poner_mensaje, texto_error
 
@@ -133,6 +134,9 @@ class AdminTab(QWidget):
 
         def fallo(exc):
             self._habilitar()
+            if isinstance(exc, SesionExpirada):
+                self.c.ventana.cerrar_sesion(motivo=str(exc), avisar_servidor=False)
+                return
             poner_mensaje(self.mensaje, f"{metodo} falló: {texto_error(exc)}", error=True)
 
         ejecutar(funcion, listo, fallo)

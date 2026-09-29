@@ -5,7 +5,11 @@ Fuente de verdad del formato de salida: /apps/services/soap/library.xml
 Acceso a datos exclusivamente con psycopg2 (sin ORM).
 """
 
+import json
 import os
+import urllib.error
+import urllib.request
+from functools import wraps
 from xml.etree import ElementTree as ET
 
 import psycopg2
@@ -26,10 +30,21 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", "library666"),
 }
 
+# El servicio de login es quien emite y valida los tokens de sesion.
+LOGIN_URL = os.getenv("LOGIN_URL", "http://localhost:5000").rstrip("/")
+LOGIN_TIMEOUT = float(os.getenv("LOGIN_TIMEOUT", "3"))
+
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": os.getenv("CORS_ORIGINS", "*")}})
 app.config["SWAGGER"] = {"title": "Library Books API", "uiversion": 3}
-Swagger(app)
+Swagger(app, template={
+    "securityDefinitions": {
+        "Bearer": {
+            "type": "apiKey", "name": "Authorization", "in": "header",
+            "description": "Token de sesion del servicio login: Bearer <session_token>",
+        }
+    }
+})
 
 
 def get_connection():
@@ -250,6 +265,42 @@ def error_xml_response(message, status):
     return Response(body, status=status, mimetype="application/xml")
 
 
+def sesion_valida(token):
+    """Pregunta al servicio login si el token tiene una sesion vigente.
+    Regresa True/False; lanza OSError si login no responde."""
+    req = urllib.request.Request(
+        f"{LOGIN_URL}/session?format=json",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    with urllib.request.urlopen(req, timeout=LOGIN_TIMEOUT) as resp:
+        return bool(json.load(resp).get("autenticado"))
+
+
+def requiere_sesion(vista):
+    """Protege las operaciones de escritura: exige Authorization: Bearer <token>
+    con una sesion vigente en login. Las lecturas (GET) no lo usan y siguen publicas."""
+    @wraps(vista)
+    def envoltura(*args, **kwargs):
+        auth = request.headers.get("Authorization", "")
+        token = auth[len("Bearer "):].strip() if auth.startswith("Bearer ") else ""
+        ruta = f"{request.method} {request.path}"
+        if not token:
+            print(f"[BOOKS] {ruta}  |  Authorization: (ausente) -> 401", flush=True)
+            return error_xml_response("Se requiere Authorization: Bearer <token>", 401)
+        try:
+            valida = sesion_valida(token)
+        except (OSError, ValueError):
+            print(f"[BOOKS] {ruta}  |  Authorization: Bearer {token} -> login no responde, 503", flush=True)
+            # Sin poder validar, se rechaza (fail closed) en lugar de dejar pasar.
+            return error_xml_response("No se pudo validar la sesion con el servicio de login", 503)
+        print(f"[BOOKS] {ruta}  |  Authorization: Bearer {token} -> "
+              f"{'sesion valida' if valida else 'token invalido, 401'}", flush=True)
+        if not valida:
+            return error_xml_response("Token de sesion invalido o expirado", 401)
+        return vista(*args, **kwargs)
+    return envoltura
+
+
 def get_or_create_id(cur, table, id_col, name_col, name):
     cur.execute(f"SELECT {id_col} FROM {table} WHERE {name_col} = %s", (name,))
     row = cur.fetchone()
@@ -429,11 +480,13 @@ def obtener_libro(isbn):
 
 
 @app.route("/api/libros", methods=["POST"])
+@requiere_sesion
 def crear_libro():
     """
     Crea un libro nuevo
     ---
     tags: [Libros]
+    security: [{Bearer: []}]
     parameters:
       - name: body
         in: body
@@ -467,6 +520,10 @@ def crear_libro():
                   definition: {type: string}
     produces: [application/xml]
     responses:
+      401:
+        description: Falta el token Bearer, o es invalido/expirado
+      503:
+        description: El servicio de login no responde
       201:
         description: Libro creado (XML)
       400:
@@ -501,11 +558,13 @@ def crear_libro():
 
 
 @app.route("/api/libros/<isbn>", methods=["PUT"])
+@requiere_sesion
 def actualizar_libro(isbn):
     """
     Actualiza un libro existente (datos propios y sus relaciones)
     ---
     tags: [Libros]
+    security: [{Bearer: []}]
     parameters:
       - {name: isbn, in: path, type: string, required: true}
       - name: body
@@ -525,6 +584,10 @@ def actualizar_libro(isbn):
             concepts: {type: array, items: {type: object}}
     produces: [application/xml]
     responses:
+      401:
+        description: Falta el token Bearer, o es invalido/expirado
+      503:
+        description: El servicio de login no responde
       200:
         description: Libro actualizado (XML)
       404:
@@ -579,15 +642,21 @@ def actualizar_libro(isbn):
 
 
 @app.route("/api/libros/<isbn>", methods=["DELETE"])
+@requiere_sesion
 def eliminar_libro(isbn):
     """
     Elimina un libro por ISBN
     ---
     tags: [Libros]
+    security: [{Bearer: []}]
     produces: [application/xml]
     parameters:
       - {name: isbn, in: path, type: string, required: true}
     responses:
+      401:
+        description: Falta el token Bearer, o es invalido/expirado
+      503:
+        description: El servicio de login no responde
       200:
         description: Libro eliminado (XML)
       404:
