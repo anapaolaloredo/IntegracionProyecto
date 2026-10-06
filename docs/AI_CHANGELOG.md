@@ -93,3 +93,20 @@ Formato: fecha — resumen — archivos — referencia al detalle completo.
   omitidas), pagos 18 (+3 omitidas), desktop_app core 19. **No se hizo humo real contra BD/Postfix**;
   UI de escritorio solo con `py_compile`. Limitaciones: GRANTs amplios a `library_user` (un rol
   compartido; se recomienda un rol por servicio) y logout sin estado.
+
+## 2026-10-06 (Redis)
+
+- **Capa Redis común** (`apps/services/common/redis_store.py`) usada por los seis servicios: fail-closed para
+  sesión/revocación/autorización (Redis caído -> 503) y fail-open para la caché.
+- **Revocación por `jti`**: `requiere_jwt` consulta `jwt:revoked:<jti>`; el logout es ahora real (borra
+  sesión y refresh, revoca todos los access jti del login y el del refresh; reintentable). `/session/extend`
+  revoca el token anterior y `/session/refresh` exige el refresh en Redis.
+- **Sesiones/refresh en Redis** (`session:`, `refresh:`, `refresh_access:`) y **caché del catálogo** en `soap`
+  (`books:list:<hash>`, `books:<isbn>`, TTL `BOOKS_CACHE_TTL`), invalidada por escrituras y por `pedidos`.
+- **`/health` y `/metrics`** en cada servicio (`/metrics` es público; restringir en el proxy).
+- **`JWT_SECRET_KEY`** (alias `SECRET_KEY`): debe ser idéntica en todos los servicios.
+- **Despliegue**: producción usa el Redis ya existente en GCP (`redis://:<password>@localhost:6379/0`, `bind
+  127.0.0.1`, `requirepass`, `noeviction`, puerto 6379 cerrado). `apps/services/docker-compose.yml` y
+  `redis.env.example` son solo para desarrollo local. Documentado en `apps/services/README_JWT.md`.
+- **Verificación**: solo con fakeredis; **nada se ejecutó contra un Redis real**. Las pruebas opcionales
+  (`common/tests/test_redis_real.py`, Task 8) deben correrse en la instancia de GCP; pendientes.
