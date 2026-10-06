@@ -56,8 +56,8 @@ def cliente():
     return books.app.test_client()
 
 
-def _h():
-    return {"Authorization": f"Bearer {crear_token(1, 2, 'access', 600)}"}
+def _h(role_id=2):
+    return {"Authorization": f"Bearer {crear_token(1, role_id, 'access', 600)}"}
 
 
 def test_put_bloquea_la_fila_con_for_update(cliente, monkeypatch):
@@ -75,7 +75,7 @@ def test_put_bloquea_la_fila_con_for_update(cliente, monkeypatch):
 def test_delete_con_pedidos_da_409_xml(cliente, monkeypatch):
     cur = FakeCursor([], fail_on="DELETE FROM libros")
     monkeypatch.setattr(books, "get_connection", lambda: FakeConn(cur))
-    resp = cliente.delete("/api/libros/123", headers=_h())
+    resp = cliente.delete("/api/libros/123", headers=_h(1))
     assert resp.status_code == 409
     assert resp.mimetype == "application/xml"
     assert b"pedidos asociados" in resp.data

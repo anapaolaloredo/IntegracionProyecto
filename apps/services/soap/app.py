@@ -281,6 +281,9 @@ def _registrar_acceso(token, datos, resultado):
 # Protege las operaciones de escritura con un JWT de acceso valido (cualquier rol,
 # igual que antes). Las lecturas (GET) no lo usan y siguen publicas.
 requiere_sesion = jwt_auth.requiere_jwt(error_response=error_xml_response, on_event=_registrar_acceso)
+# Crear y borrar libros es solo para administradores (403 para otros roles).
+requiere_admin = jwt_auth.requiere_jwt(roles=[jwt_auth.ROLE_ADMIN],
+                                       error_response=error_xml_response, on_event=_registrar_acceso)
 
 
 def get_or_create_id(cur, table, id_col, name_col, name):
@@ -462,7 +465,7 @@ def obtener_libro(isbn):
 
 
 @app.route("/api/libros", methods=["POST"])
-@requiere_sesion
+@requiere_admin
 def crear_libro():
     """
     Crea un libro nuevo
@@ -620,7 +623,7 @@ def actualizar_libro(isbn):
 
 
 @app.route("/api/libros/<isbn>", methods=["DELETE"])
-@requiere_sesion
+@requiere_admin
 def eliminar_libro(isbn):
     """
     Elimina un libro por ISBN

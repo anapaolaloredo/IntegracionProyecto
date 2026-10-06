@@ -52,9 +52,20 @@ def test_refresh_token_no_sirve_como_acceso(cliente):
     assert cliente.delete("/api/libros/123", headers=_h(crear_token(1, 2, "refresh", 600))).status_code == 401
 
 
-def test_token_valido_pasa_a_la_vista(cliente):
+def test_admin_pasa_a_la_vista(cliente):
     # Cuerpo vacio: la vista responde 400 de validacion, prueba de que el decorador dejo pasar.
-    resp = cliente.post("/api/libros", json={}, headers=_h(crear_token(1, 2, "access", 600)))
+    resp = cliente.post("/api/libros", json={}, headers=_h(crear_token(1, 1, "access", 600)))
+    assert resp.status_code not in (401, 403, 503)
+
+
+@pytest.mark.parametrize("metodo,ruta", [("post", "/api/libros"), ("delete", "/api/libros/123")])
+def test_crear_y_borrar_exigen_admin_403(cliente, metodo, ruta):
+    resp = getattr(cliente, metodo)(ruta, json={}, headers=_h(crear_token(1, 2, "access", 600)))
+    assert resp.status_code == 403 and resp.mimetype == "application/xml"
+
+
+def test_actualizar_sigue_abierto_a_cualquier_rol_valido(cliente):
+    resp = cliente.put("/api/libros/123", json={}, headers=_h(crear_token(1, 2, "access", 600)))
     assert resp.status_code not in (401, 403, 503)
 
 

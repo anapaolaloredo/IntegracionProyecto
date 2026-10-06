@@ -79,3 +79,7 @@ curl -s -X POST localhost:5000/session/refresh?format=json -H "Content-Type: app
   `contrasena_hash`, `autores`, `libro_autor`, y UPDATE sobre `libros`) porque todos los servicios
   comparten un solo rol de BD. Seguimiento recomendado: un rol por servicio con permisos mínimos.
 - El logout JWT es sin estado: el token sigue siendo válido hasta que expira (el cliente solo lo descarta).
+
+## Permisos de soap (libros)
+
+`POST /api/libros` y `DELETE /api/libros/<isbn>` exigen JWT con rol **admin** (403 para `cliente`). `PUT /api/libros/<isbn>` acepta cualquier JWT de acceso válido. Las lecturas (GET) son públicas.
