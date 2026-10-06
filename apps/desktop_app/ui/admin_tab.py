@@ -135,11 +135,21 @@ class AdminTab(QWidget):
         def fallo(exc):
             self._habilitar()
             if isinstance(exc, SesionExpirada):
-                self.c.ventana.cerrar_sesion(motivo=str(exc), avisar_servidor=False)
+                self._sesion_expirada(exc)
                 return
             poner_mensaje(self.mensaje, f"{metodo} falló: {texto_error(exc)}", error=True)
 
         ejecutar(funcion, listo, fallo)
+
+    def _sesion_expirada(self, exc):
+        ventana = self.c.ventana
+        if not hasattr(ventana, "renovar_token"):
+            ventana.cerrar_sesion(motivo=str(exc), avisar_servidor=False)
+            return
+        ventana.renovar_token(
+            lambda: poner_mensaje(self.mensaje, "Tu sesión se renovó automáticamente. "
+                                  "Repite la operación.", error=False),
+            lambda: ventana.cerrar_sesion(motivo=str(exc), avisar_servidor=False))
 
     def _habilitar(self):
         for b in self.botones.values():

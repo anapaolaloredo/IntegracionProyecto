@@ -228,6 +228,20 @@ class MainWindow(QMainWindow):
         ejecutar(lambda: self.c.auth.refrescar(refresh), ok,
                  lambda exc: self.cerrar_sesion(motivo=motivo, avisar_servidor=False))
 
+    def renovar_token(self, ok, fallo):
+        """Intenta renovar el JWT con el refresh token (una vez). Llama ok() o fallo()."""
+        refresh = self.c.auth.refresh_token
+        if not refresh or self.saliendo:
+            fallo()
+            return
+
+        def listo(datos):
+            self._guardar_token(datos["session_token"])
+            self._set_restantes(datos.get("segundos_restantes"))
+            ok()
+
+        ejecutar(lambda: self.c.auth.refrescar(refresh), listo, lambda exc: fallo())
+
     def _sesion_error(self, exc):
         # Sin conexion con login no se cierra la sesion: se reintenta en el siguiente ciclo
         poner_mensaje(self.sesion.mensaje, "No se pudo consultar la sesión: " + texto_error(exc), error=True)

@@ -189,3 +189,19 @@ def test_auth_guarda_refresh_al_verificar_y_refresca():
     assert auth.refresh_token == "ref"
     assert auth.refrescar("ref")["session_token"] == "nuevo"
     assert ("POST", "/session/refresh", {"refresh_token": "ref"}) in http.llamadas
+
+
+def test_refrescar_con_refresh_invalido_lanza_service_error():
+    import pytest
+    from core.auth_api import AuthApi
+    from core.http import ServiceError, SesionExpirada
+
+    class Http:
+        base_url = "http://x"
+
+        def request(self, *a, **kw):
+            return _RespJson(401, {"error": "invalido"})
+
+    with pytest.raises(ServiceError) as exc:
+        AuthApi(Http()).refrescar("malo")
+    assert not isinstance(exc.value, SesionExpirada)

@@ -37,7 +37,10 @@ class Controlador:
         log = self.registro.entrada.emit
         self.http_login = HttpClient("Login", self.config.login_url, self.config.timeout, log)
         self.http_libros = HttpClient("Libros", self.config.books_url, self.config.timeout, log)
+        anterior = getattr(self, "auth", None)
         self.auth = AuthApi(self.http_login)
+        if anterior is not None:
+            self.auth.refresh_token = anterior.refresh_token  # guardar config no debe perder el refresh
         self.libros = BooksApi(self.http_libros, lambda: self.token_sesion)
 
     def aplicar_config(self, config):
@@ -68,10 +71,27 @@ class Controlador:
         if datos.get("autenticado"):
             self.auth.refresh_token = guardada.get("refresh_token")
             self.sesion_iniciada(guardada["token"], guardada.get("email") or datos.get("email", ""))
-        else:
-            session_store.borrar()
-            self.mostrar_login("Tu sesión guardada ya no es válida en el servidor (expiró o se cerró). "
-                               "Inicia sesión de nuevo.", guardada.get("email", ""))
+            return
+        email = guardada.get("email", "")
+        refresh = guardada.get("refresh_token")
+
+        def invalida(_=None):
+            if self.ventana is login:
+                session_store.borrar()
+                self.mostrar_login("Tu sesión guardada ya no es válida en el servidor (expiró o se cerró). "
+                                   "Inicia sesión de nuevo.", email)
+
+        if not refresh:
+            invalida()
+            return
+
+        def renovada(nuevos):
+            if self.ventana is not login:
+                return
+            self.auth.refresh_token = refresh
+            self.sesion_iniciada(nuevos["session_token"], email)
+
+        ejecutar(lambda: self.auth.refrescar(refresh), renovada, invalida)  # un solo intento
 
     def _cambiar_ventana(self, nueva):
         anterior, self.ventana = self.ventana, nueva
