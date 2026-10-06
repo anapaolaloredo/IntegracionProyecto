@@ -6,6 +6,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import sys
+from pathlib import Path
+
+# apps/services contiene el paquete compartido `common`
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "port": os.getenv("DB_PORT", "5432"),
@@ -24,3 +30,4 @@ MAIL_FROM = os.getenv("MAIL_FROM", "auth-service@localhost")
 
 SESSION_TTL_MINUTES = int(os.getenv("SESSION_TTL_MINUTES", "30"))
 CODE_TTL_MINUTES = int(os.getenv("CODE_TTL_MINUTES", "5"))
+REFRESH_TTL_DAYS = int(os.getenv("REFRESH_TTL_DAYS", "7"))
