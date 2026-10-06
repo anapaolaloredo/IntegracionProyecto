@@ -67,6 +67,11 @@ def cambiar_estado(id_pedido, nuevo, id_actor, es_admin):
             raise NoEncontrado("Pedido no encontrado.")
         transiciones.validar(pedido["estado"], nuevo, es_admin, pedido["id_cuenta"] == id_actor)
         if nuevo == "cancelado":  # devuelve el stock
+            # Bloquea los libros en orden de id (igual que crear) para evitar deadlocks:
+            # el UPDATE ... FROM los bloquearia en el orden del plan de ejecucion.
+            cur.execute("SELECT l.id_libro FROM libros l JOIN lineas_pedido lp ON lp.id_libro = l.id_libro "
+                        "WHERE lp.id_pedido = %s ORDER BY l.id_libro FOR UPDATE OF l", (id_pedido,))
+            cur.fetchall()
             cur.execute("UPDATE libros l SET stock = l.stock + lp.cantidad FROM lineas_pedido lp "
                         "WHERE lp.id_pedido = %s AND l.id_libro = lp.id_libro", (id_pedido,))
         cur.execute("UPDATE pedidos SET estado = %s WHERE id_pedido = %s", (nuevo, id_pedido))
