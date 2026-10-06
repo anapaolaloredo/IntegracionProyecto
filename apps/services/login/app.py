@@ -6,6 +6,7 @@ from flask import Flask, request
 from flasgger import Swagger
 
 from config.settings import PORT
+from common import jwt_auth
 import service
 from errors import ErrorDominio
 from render.formatters import responder
@@ -13,6 +14,7 @@ from render.formatters import responder
 app = Flask(__name__)
 app.config["SWAGGER"] = {"title": "Microservicio de Autenticacion", "uiversion": 3}
 Swagger(app)
+jwt_auth.obtener_secret()  # falla al arrancar si no hay SECRET_KEY
 
 
 def _token_de_header():
@@ -98,7 +100,7 @@ def login():
 @app.route("/login/verify", methods=["POST"])
 def login_verify():
     """
-    Verifica el codigo 2FA y crea la sesion (valida 30 minutos).
+    Verifica el codigo 2FA y emite un JWT de acceso (30 minutos) y un refresh token (7 dias).
     ---
     parameters:
       - in: query
@@ -116,13 +118,13 @@ def login_verify():
             codigo: {type: string, example: "123456"}
     responses:
       200:
-        description: "Sesion creada. XML: <sesion><session_token>...</session_token></sesion>. JSON: {\\"session_token\\": \\"...\\"}"
+        description: "Sesion creada. JSON: {\\"session_token\\": \\"<JWT 30 min>\\", \\"refresh_token\\": \\"<JWT 7 dias>\\"}"
       401:
         description: Codigo invalido o expirado
     """
     datos = request.get_json(force=True, silent=True) or {}
-    token = service.verificar_login(datos.get("email"), datos.get("codigo"))
-    return responder("sesion", {"session_token": token})
+    tokens = service.verificar_login(datos.get("email"), datos.get("codigo"))
+    return responder("sesion", tokens)
 
 
 @app.route("/logout", methods=["POST"])
@@ -177,7 +179,7 @@ def session_status():
 @app.route("/session/extend", methods=["POST"])
 def session_extend():
     """
-    Extiende la sesion del token dado otros SESSION_TTL_MINUTES (30) a partir de ahora.
+    Emite un session_token (JWT) nuevo de SESSION_TTL_MINUTES (30) a partir de ahora; el anterior sigue valiendo hasta expirar.
     ---
     parameters:
       - in: header
@@ -192,11 +194,39 @@ def session_extend():
         default: xml
     responses:
       200:
-        description: "Sesion extendida. JSON: {\\"expira_en\\": \\"...\\", \\"segundos_restantes\\": 1800}"
+        description: "Sesion extendida. JSON: {\\"session_token\\": \\"...\\", \\"expira_en\\": \\"...\\", \\"segundos_restantes\\": 1800}"
       401:
         description: Token invalido, expirado o ausente
     """
     return responder("sesion", service.extender_sesion(_token_de_header()))
+
+
+@app.route("/session/refresh", methods=["POST"])
+def session_refresh():
+    """
+    Canjea un refresh token por un nuevo JWT de acceso (30 min).
+    ---
+    parameters:
+      - in: query
+        name: format
+        type: string
+        enum: [xml, json]
+        default: xml
+      - in: body
+        name: body
+        schema:
+          type: object
+          required: [refresh_token]
+          properties:
+            refresh_token: {type: string}
+    responses:
+      200:
+        description: "JSON: {\\"session_token\\": \\"...\\", \\"expira_en\\": \\"...\\", \\"segundos_restantes\\": 1800}"
+      401:
+        description: Refresh token invalido o expirado
+    """
+    datos = request.get_json(force=True, silent=True) or {}
+    return responder("sesion", service.refrescar_sesion(datos.get("refresh_token")))
 
 
 @app.route("/health", methods=["GET"])

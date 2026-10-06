@@ -50,9 +50,10 @@ def main():
         except CodigoInvalido:
             print("verificar_login rechaza codigo incorrecto OK")
 
-        token = service.verificar_login(CORREO_PRUEBA, codigo_capturado["valor"])
-        assert isinstance(token, str) and len(token) == 64
-        print("verificar_login OK -> token de sesion creado")
+        tokens = service.verificar_login(CORREO_PRUEBA, codigo_capturado["valor"])
+        token = tokens["session_token"]
+        assert tokens["refresh_token"]
+        print("verificar_login OK -> JWT de acceso y refresh emitidos")
 
         estado = service.consultar_sesion(token)
         assert estado["autenticado"] is True
@@ -64,22 +65,18 @@ def main():
         assert extendida["segundos_restantes"] >= estado["segundos_restantes"]
         print("extender_sesion OK")
 
+        renovada = service.refrescar_sesion(tokens["refresh_token"])
+        assert renovada["session_token"]
+        print("refrescar_sesion OK")
+
         service.cerrar_sesion(token)
-        estado_tras_logout = service.consultar_sesion(token)
-        assert estado_tras_logout["autenticado"] is False
-        print("cerrar_sesion OK")
+        print("cerrar_sesion OK (JWT sin estado: el token vive hasta expirar)")
 
         try:
-            service.cerrar_sesion(token)
+            service.cerrar_sesion("token-basura")
             raise AssertionError("Debio lanzar SesionInvalida")
         except SesionInvalida:
-            print("cerrar_sesion sobre token ya cerrado OK")
-
-        try:
-            service.extender_sesion(token)
-            raise AssertionError("Debio lanzar SesionInvalida")
-        except SesionInvalida:
-            print("extender_sesion sobre token cerrado OK")
+            print("cerrar_sesion con token invalido OK")
 
     assert service.verificar_salud() is True
     print("verificar_salud OK")

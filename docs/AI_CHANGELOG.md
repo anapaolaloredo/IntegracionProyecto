@@ -75,3 +75,21 @@ Formato: fecha — resumen — archivos — referencia al detalle completo.
   (listo/parcial/pendiente) del índice de `html/ejercicio02/index.html` habían perdido su texto
   visible (`<span class="indice-estado listo"></span>`, vacío) en algún punto de ediciones
   anteriores; se restauraron con el estado real y actualizado de cada sección.
+
+## 2026-10-06
+
+- **Microservicios con JWT**: módulo común `apps/services/common` (claims, `requiere_jwt`, utilidades
+  de BD/web); `login` emite `session_token` (30 min) y `refresh_token` (`REFRESH_TTL_DAYS`) con
+  `/session/refresh` y logout sin estado; `soap` valida JWT localmente con `LOG_TOKENS` y
+  `CORS_ORIGINS`; el cliente de escritorio refresca la sesión.
+- **Servicios nuevos**: `users` (5002), `authors` (5003), `pedidos` (5004, stock transaccional y
+  estados) y `pagos` (5005, actualiza `pedidos.estado` en la misma transacción), todos con el mismo
+  `SECRET_KEY` y roles admin/cliente.
+- **Migración** `data/migrations/2026-10-06_pedidos_pagos.sql` (tablas pedidos/pagos y GRANTs). No se
+  aplicó a ninguna base de datos. Orden: `library_schema.sql` -> `2026-09-18_tablas_login.sql` -> esta.
+- **Documentación**: `apps/services/README_JWT.md` (puertos, variables, migraciones, HTTPS en proxy
+  inverso, guía curl).
+- **Verificación**: pytest `common` 28, login 16, soap 17, users 21, authors 16, pedidos 33 (+3
+  omitidas), pagos 18 (+3 omitidas), desktop_app core 19. **No se hizo humo real contra BD/Postfix**;
+  UI de escritorio solo con `py_compile`. Limitaciones: GRANTs amplios a `library_user` (un rol
+  compartido; se recomienda un rol por servicio) y logout sin estado.

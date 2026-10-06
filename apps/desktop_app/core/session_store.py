@@ -1,4 +1,4 @@
-"""Recuerda localmente la ultima sesion (token + correo).
+"""Recuerda localmente la ultima sesion (token + refresh token + correo).
 
 Recordar el token NO significa que siga valido: al abrir la app siempre se
 valida con GET /session y, si el servidor ya no lo reconoce, se descarta."""
@@ -12,11 +12,11 @@ def _archivo():
     return config_dir() / "session.json"
 
 
-def guardar(token, email):
+def guardar(token, email, refresh_token=None):
     carpeta = config_dir()
     carpeta.mkdir(parents=True, exist_ok=True)
     with open(_archivo(), "w", encoding="utf-8") as f:
-        json.dump({"token": token, "email": email}, f)
+        json.dump({"token": token, "email": email, "refresh_token": refresh_token}, f)
 
 
 def cargar():

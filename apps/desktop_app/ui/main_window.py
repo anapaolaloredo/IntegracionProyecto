@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (QDockWidget, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
                                QPushButton, QTabWidget, QVBoxLayout, QWidget)
 
+from core import session_store
 from core.health import comprobar_libros, comprobar_login
 from core.http import SesionExpirada, log_terminal
 from ui.admin_tab import AdminTab
@@ -224,12 +225,48 @@ class MainWindow(QMainWindow):
 
     def _sesion_ok(self, datos):
         if not datos.get("autenticado"):
-            self.cerrar_sesion(motivo="Tu sesión expiró o ya no es válida en el servidor. Inicia sesión de nuevo.",
-                               avisar_servidor=False)
+            self._intentar_refresh()
             return
         self.sesion.mostrar_datos(datos)
         self._set_restantes(datos.get("segundos_restantes"))
         poner_mensaje(self.sesion.mensaje, "Sesión válida en el servidor.")
+
+    def _guardar_token(self, nuevo):
+        self.token = nuevo
+        self.c.token_sesion = nuevo
+        try:
+            session_store.guardar(nuevo, self.email, self.c.auth.refresh_token)
+        except OSError:
+            pass  # sin disco la app funciona igual
+
+    def _intentar_refresh(self):
+        motivo = "Tu sesión expiró o ya no es válida en el servidor. Inicia sesión de nuevo."
+        refresh = self.c.auth.refresh_token
+        if not refresh:
+            self.cerrar_sesion(motivo=motivo, avisar_servidor=False)
+            return
+
+        def ok(datos):
+            self._guardar_token(datos["session_token"])
+            self._set_restantes(datos.get("segundos_restantes"))
+            poner_mensaje(self.sesion.mensaje, "Sesión renovada automáticamente.")
+
+        ejecutar(lambda: self.c.auth.refrescar(refresh), ok,
+                 lambda exc: self.cerrar_sesion(motivo=motivo, avisar_servidor=False))
+
+    def renovar_token(self, ok, fallo):
+        """Intenta renovar el JWT con el refresh token (una vez). Llama ok() o fallo()."""
+        refresh = self.c.auth.refresh_token
+        if not refresh or self.saliendo:
+            fallo()
+            return
+
+        def listo(datos):
+            self._guardar_token(datos["session_token"])
+            self._set_restantes(datos.get("segundos_restantes"))
+            ok()
+
+        ejecutar(lambda: self.c.auth.refrescar(refresh), listo, lambda exc: fallo())
 
     def _sesion_error(self, exc):
         # Sin conexion con login no se cierra la sesion: se reintenta en el siguiente ciclo
@@ -281,13 +318,15 @@ class MainWindow(QMainWindow):
 
         def ok(datos):
             self.sesion.btn_extender.setEnabled(True)
+            if datos.get("session_token"):
+                self._guardar_token(datos["session_token"])
             self._set_restantes(datos.get("segundos_restantes"))
             poner_mensaje(self.sesion.mensaje, "Sesión extendida 30 minutos a partir de ahora.")
 
         def fallo(exc):
             self.sesion.btn_extender.setEnabled(True)
             if isinstance(exc, SesionExpirada):
-                self.cerrar_sesion(motivo=str(exc), avisar_servidor=False)
+                self._intentar_refresh()
             else:
                 poner_mensaje(self.sesion.mensaje, "No se pudo extender la sesión: " + texto_error(exc), error=True)
 

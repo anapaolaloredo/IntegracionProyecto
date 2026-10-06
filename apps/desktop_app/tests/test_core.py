@@ -143,3 +143,65 @@ def test_401_en_escritura_es_sesion_expirada():
     api, _ = _api(_Resp(401))
     with pytest.raises(SesionExpirada):
         api.eliminar("111")
+
+
+class _RespJson(_Resp):
+    def __init__(self, status, datos):
+        import json as _json
+        super().__init__(status, _json.dumps(datos).encode())
+        self._datos = datos
+
+    def json(self):
+        return self._datos
+
+
+def test_session_store_guarda_refresh_token():
+    session_store.guardar("tok", "a@b.c", "ref")
+    datos = session_store.cargar()
+    assert datos["token"] == "tok" and datos["refresh_token"] == "ref"
+    session_store.borrar()
+
+
+def test_session_store_sin_refresh_sigue_funcionando():
+    session_store.guardar("tok", "a@b.c")
+    assert session_store.cargar().get("refresh_token") is None
+    session_store.borrar()
+
+
+def test_auth_guarda_refresh_al_verificar_y_refresca():
+    from core.auth_api import AuthApi
+
+    class Http:
+        def __init__(self):
+            self.llamadas = []
+
+        def request(self, metodo, ruta, **kw):
+            self.llamadas.append((metodo, ruta, kw.get("json_body")))
+            if ruta == "/login/verify":
+                return _RespJson(200, {"session_token": "acc", "refresh_token": "ref"})
+            return _RespJson(200, {"session_token": "nuevo", "segundos_restantes": 1800})
+
+        base_url = "http://x"
+
+    http = Http()
+    auth = AuthApi(http)
+    assert auth.verificar_codigo("a@b.c", "123456") == "acc"
+    assert auth.refresh_token == "ref"
+    assert auth.refrescar("ref")["session_token"] == "nuevo"
+    assert ("POST", "/session/refresh", {"refresh_token": "ref"}) in http.llamadas
+
+
+def test_refrescar_con_refresh_invalido_lanza_service_error():
+    import pytest
+    from core.auth_api import AuthApi
+    from core.http import ServiceError, SesionExpirada
+
+    class Http:
+        base_url = "http://x"
+
+        def request(self, *a, **kw):
+            return _RespJson(401, {"error": "invalido"})
+
+    with pytest.raises(ServiceError) as exc:
+        AuthApi(Http()).refrescar("malo")
+    assert not isinstance(exc.value, SesionExpirada)

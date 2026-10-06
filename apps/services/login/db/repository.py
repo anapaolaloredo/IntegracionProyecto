@@ -40,6 +40,18 @@ def obtener_usuario_por_correo(correo):
             return cur.fetchone()
 
 
+def obtener_usuario_por_id(id_usuario):
+    with get_connection() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                "SELECT c.id_cuenta AS id_usuario, c.correo, c.rol, p.nombre "
+                "FROM cuentas c JOIN personas p ON p.id_cuenta = c.id_cuenta "
+                "WHERE c.id_cuenta = %s",
+                (id_usuario,),
+            )
+            return cur.fetchone()
+
+
 def guardar_codigo(id_usuario, codigo_hash, expira_en):
     with get_connection() as conn:
         with conn.cursor() as cur:

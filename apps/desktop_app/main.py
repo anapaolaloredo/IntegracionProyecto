@@ -36,7 +36,10 @@ class Controlador:
         log = self.registro.entrada.emit
         self.http_login = HttpClient("Login", self.config.login_url, self.config.timeout, log)
         self.http_libros = HttpClient("Libros", self.config.books_url, self.config.timeout, log)
+        anterior = getattr(self, "auth", None)
         self.auth = AuthApi(self.http_login)
+        if anterior is not None:
+            self.auth.refresh_token = anterior.refresh_token  # guardar config no debe perder el refresh
         self.libros = BooksApi(self.http_libros, lambda: self.token_sesion)
 
     def aplicar_config(self, config):
@@ -48,6 +51,7 @@ class Controlador:
         guardada se abre con su token y la propia ventana la valida contra el servidor."""
         guardada = session_store.cargar()
         if guardada:
+            self.auth.refresh_token = guardada.get("refresh_token")
             self.sesion_iniciada(guardada["token"], guardada.get("email", ""))
         else:
             self.mostrar_invitado()
@@ -78,7 +82,7 @@ class Controlador:
     def sesion_iniciada(self, token, email):
         self.token_sesion = token
         try:
-            session_store.guardar(token, email)
+            session_store.guardar(token, email, self.auth.refresh_token)
         except OSError:
             pass  # sin disco la app funciona igual; solo no recordara la sesion
         self._cambiar_ventana(MainWindow(self, token, email))

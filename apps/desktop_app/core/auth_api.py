@@ -11,6 +11,7 @@ from core.http import ServiceError, SesionExpirada, mensaje_para_status
 class AuthApi:
     def __init__(self, http):
         self.http = http
+        self.refresh_token = None
 
     def _llamar(self, metodo, ruta, *, token=None, body=None, ok=(200,), mensajes=None):
         headers = {"Authorization": f"Bearer {token}"} if token else None
@@ -41,6 +42,7 @@ class AuthApi:
         datos = self._llamar("POST", "/login/verify", body={"email": email, "codigo": codigo},
                              mensajes={401: "El código es incorrecto o ya expiró (dura 5 minutos). "
                                             "Revísalo o solicita uno nuevo."})
+        self.refresh_token = datos.get("refresh_token")
         return datos["session_token"]
 
     def consultar_sesion(self, token):
@@ -49,6 +51,10 @@ class AuthApi:
     def extender_sesion(self, token):
         return self._llamar("POST", "/session/extend", token=token,
                             mensajes={401: "Tu sesión expiró o ya no es válida. Inicia sesión de nuevo."})
+
+    def refrescar(self, refresh_token):
+        return self._llamar("POST", "/session/refresh", body={"refresh_token": refresh_token},
+                            mensajes={401: "Tu sesión expiró. Inicia sesión de nuevo."})
 
     def cerrar_sesion(self, token):
         return self._llamar("POST", "/logout", token=token,
