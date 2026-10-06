@@ -9,6 +9,8 @@ from flask import jsonify, request
 from flask.json.provider import DefaultJSONProvider
 from flask_cors import CORS
 
+from common.redis_store import RedisNoDisponible
+
 
 class ErrorDominio(Exception):
     status = 400
@@ -53,6 +55,10 @@ def configurar_app(app):
     @app.errorhandler(ErrorDominio)
     def _dominio(err):
         return jsonify({"mensaje": str(err)}), err.status
+
+    @app.errorhandler(RedisNoDisponible)
+    def _redis_no_disponible(_):
+        return jsonify({"mensaje": "Servicio de autorizacion no disponible. Intenta de nuevo en unos minutos."}), 503
 
     @app.errorhandler(404)
     def _no_encontrada(_):

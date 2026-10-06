@@ -4,3 +4,4 @@ psycopg[binary]==3.2.10
 python-dotenv==1.0.1
 flasgger==0.9.7.1
 PyJWT==2.9.0
+redis>=5,<6
