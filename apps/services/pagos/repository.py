@@ -63,4 +63,6 @@ def reembolsar(id_pago):
         if fila["estado"] != "pagado":
             raise Conflicto(f"No se puede reembolsar: el pedido esta {fila['estado']}.")
         cur.execute("DELETE FROM pagos WHERE id_pago = %s", (id_pago,))
+        if cur.rowcount != 1:  # otro reembolso ya lo borro: no reabrir el pedido
+            raise NoEncontrado("Pago no encontrado.")
         cur.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id_pedido = %s", (fila["id_pedido"],))
