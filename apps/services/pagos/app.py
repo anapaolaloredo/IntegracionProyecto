@@ -15,8 +15,9 @@ import os  # noqa: E402
 from flask import Flask, g, jsonify  # noqa: E402
 
 import repository  # noqa: E402
-from common import jwt_auth  # noqa: E402
+from common import db as common_db, jwt_auth  # noqa: E402
 from common.jwt_auth import ROLE_ADMIN, requiere_jwt  # noqa: E402
+from common.ops import registrar_operacion  # noqa: E402
 from common.web import (Invalido, NoEncontrado, Prohibido, configurar_app,  # noqa: E402
                         crear_swagger, cuerpo_json)
 
@@ -25,6 +26,7 @@ jwt_auth.obtener_secret()  # no arranca sin SECRET_KEY
 app = Flask(__name__)
 configurar_app(app)
 crear_swagger(app, "Pagos API")
+registrar_operacion(app, "pagos", db_check=lambda: common_db.ping())
 
 METODOS = ("tarjeta", "transferencia", "efectivo")
 
