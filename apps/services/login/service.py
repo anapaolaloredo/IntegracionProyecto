@@ -120,13 +120,21 @@ def cerrar_sesion(token):
     datos = _decodificar_o_none(token, "access")
     if not datos:
         raise SesionInvalida("Token de sesion invalido o expirado.")
-    sesion = _sesion_activa(datos)
-    redis_store.borrar_refresh(sesion["jti_refresh"])
-    redis_store.revocar_jti(sesion["jti_refresh"], sesion["exp_refresh"])
-    exp_acceso = int(time.time()) + SESSION_TTL
-    for jti in redis_store.accesos_de_refresh(sesion["jti_refresh"]):
-        _cerrar_acceso(jti, exp_acceso)  # todos los accesos vivos de este login
-    redis_store.borrar_accesos_de_refresh(sesion["jti_refresh"])
+    if redis_store.jti_revocado(datos["jti"]):
+        raise SesionInvalida("Token de sesion revocado.")
+    sesion = redis_store.obtener_sesion(datos["jti"])
+    if sesion is None:
+        raise SesionInvalida("La sesion no existe o ya expiro.")
+    # Todo es idempotente y el token presentado se cierra al final: si algo falla antes,
+    # el reintento con el mismo token termina el trabajo.
+    jti_refresh = sesion["jti_refresh"]
+    redis_store.revocar_jti(jti_refresh, sesion["exp_refresh"])
+    exp_hermano = int(time.time()) + SESSION_TTL
+    for jti in redis_store.accesos_de_refresh(jti_refresh):
+        if jti != datos["jti"]:
+            _cerrar_acceso(jti, exp_hermano)  # accesos hermanos vivos de este login
+    redis_store.borrar_refresh(jti_refresh)
+    redis_store.borrar_accesos_de_refresh(jti_refresh)
     _cerrar_acceso(datos["jti"], datos["exp"])
 
 

@@ -179,3 +179,37 @@ def test_acceso_hermano_con_refresh_revocado_no_puede_extender():
             service.extender_sesion(hermano)
         redis_store.borrar_refresh(refresh["jti"])
         assert service.consultar_sesion(hermano) == {"autenticado": False}
+
+
+def test_logout_reintento_tras_fallo_de_redis_termina_de_revocar(monkeypatch):
+    tokens = _login()
+    with patch.object(service.repository, "obtener_usuario_por_id", return_value=USUARIO):
+        hermano = service.refrescar_sesion(tokens["refresh_token"])["session_token"]
+    refresh = decodificar(tokens["refresh_token"], "refresh")
+    original = redis_store.borrar_refresh
+
+    def falla(_jti):
+        raise redis_store.RedisNoDisponible("caido")
+    monkeypatch.setattr(redis_store, "borrar_refresh", falla)
+    with pytest.raises(redis_store.RedisNoDisponible):
+        service.cerrar_sesion(tokens["session_token"])
+    monkeypatch.setattr(redis_store, "borrar_refresh", original)
+    service.cerrar_sesion(tokens["session_token"])
+    assert redis_store.jti_revocado(decodificar(tokens["session_token"])["jti"]) is True
+    assert redis_store.jti_revocado(decodificar(hermano)["jti"]) is True
+    assert redis_store.jti_revocado(refresh["jti"]) is True
+
+
+def test_logout_funciona_aunque_el_refresh_ya_no_exista():
+    tokens = _login()
+    refresh = decodificar(tokens["refresh_token"], "refresh")
+    redis_store.borrar_refresh(refresh["jti"])
+    service.cerrar_sesion(tokens["session_token"])
+    assert redis_store.jti_revocado(decodificar(tokens["session_token"])["jti"]) is True
+
+
+def test_segundo_logout_tras_uno_completo_falla():
+    tokens = _login()
+    service.cerrar_sesion(tokens["session_token"])
+    with pytest.raises(SesionInvalida):
+        service.cerrar_sesion(tokens["session_token"])
