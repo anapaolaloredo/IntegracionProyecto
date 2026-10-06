@@ -13,3 +13,10 @@ def get_connection():
         user=os.getenv("DB_USER", "library_user"),
         password=os.getenv("DB_PASSWORD", ""),
     )
+
+
+def ping():
+    """True si PostgreSQL responde a SELECT 1 (para /health)."""
+    with get_connection() as conn, conn.cursor() as cur:
+        cur.execute("SELECT 1")
+        return cur.fetchone()[0] == 1
