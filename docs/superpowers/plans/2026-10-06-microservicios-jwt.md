@@ -2277,6 +2277,7 @@ def test_crear_pedido_fusiona_lineas_duplicadas(c, monkeypatch):
         return 11
 
     monkeypatch.setattr(pedidos_app.repository, "crear", crear)
+    monkeypatch.setattr(pedidos_app.repository, "obtener", lambda i: dict(PEDIDO, id_pedido=i))
     cuerpo = {"lineas": [{"id_libro": 5, "cantidad": 1}, {"id_libro": 5, "cantidad": 2},
                          {"id_libro": 3, "cantidad": 4}]}
     resp = c.post("/api/pedidos", json=cuerpo, headers=USER2)
