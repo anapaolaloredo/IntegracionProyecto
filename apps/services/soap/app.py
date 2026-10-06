@@ -5,7 +5,10 @@ Fuente de verdad del formato de salida: /apps/services/soap/library.xml
 Acceso a datos exclusivamente con psycopg2 (sin ORM).
 """
 
+import hashlib
+import json
 import os
+from functools import wraps
 from xml.etree import ElementTree as ET
 
 import psycopg2
@@ -20,7 +23,8 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from common import jwt_auth  # noqa: E402
+from common import jwt_auth, redis_store  # noqa: E402
+from common.ops import registrar_operacion  # noqa: E402
 from common.web import parse_origins  # noqa: E402
 
 load_dotenv()
@@ -51,6 +55,19 @@ Swagger(app, template={
 
 def get_connection():
     return psycopg2.connect(**DB_CONFIG)
+
+
+def _db_ok():
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1")
+            return cur.fetchone()[0] == 1
+    finally:
+        conn.close()
+
+
+registrar_operacion(app, "books", db_check=lambda: _db_ok())  # GET /health y GET /metrics (publicos)
 
 
 # json_agg(...) ya devuelve JSON: psycopg2 lo castea a list/dict de Python.
@@ -323,7 +340,46 @@ def guardar_relaciones(cur, id_libro, data):
         )
 
 
+# ---- cache publica en Redis (fail-open: sin Redis se lee de PostgreSQL) ----
+def _clave_lista():
+    filtros = "&".join(f"{k}={v}" for k, v in sorted(request.args.items(multi=True)))
+    huella = hashlib.sha1(f"{request.path}?{filtros}".encode("utf-8")).hexdigest()[:16]
+    return f"books:list:{huella}"
+
+
+def cacheado(clave_fn):
+    """Cachea respuestas 200 de un GET publico en Redis con TTL corto (BOOKS_CACHE_TTL)."""
+    def decorador(vista):
+        @wraps(vista)
+        def envoltura(*args, **kwargs):
+            clave = clave_fn(**kwargs)
+            guardado = redis_store.cache_get(clave)
+            if guardado is not None:
+                datos = json.loads(guardado)
+                resp = Response(datos["body"], status=200, mimetype=datos["mimetype"])
+                resp.headers["X-Cache"] = "HIT"
+                return resp
+            resp = vista(*args, **kwargs)
+            if resp.status_code == 200:
+                redis_store.cache_set(clave, json.dumps({"body": resp.get_data(as_text=True),
+                                                         "mimetype": resp.mimetype}))
+            resp.headers["X-Cache"] = "MISS"
+            return resp
+        return envoltura
+    return decorador
+
+
+@app.after_request
+def invalidar_cache_tras_escrituras(resp):
+    """Cualquier POST/PUT/PATCH/DELETE exitoso sobre /api/libros* invalida books:*."""
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and request.path.startswith("/api/libros") \
+            and resp.status_code < 400:
+        redis_store.cache_invalidar_libros()
+    return resp
+
+
 @app.route("/api/libros", methods=["GET"])
+@cacheado(lambda **_: _clave_lista())
 def listar_libros():
     """
     Lista todos los libros
@@ -338,6 +394,7 @@ def listar_libros():
 
 
 @app.route("/api/libros/buscar", methods=["GET"])
+@cacheado(lambda **_: _clave_lista())
 def buscar_libros():
     """
     Busca libros por atributos (titulo, autor, genero, formato, anio, rango de precio)
@@ -409,6 +466,7 @@ def buscar_libros():
 
 
 @app.route("/api/libros/temas", methods=["GET"])
+@cacheado(lambda **_: _clave_lista())
 def listar_temas_libros():
     """
     Lista libros con nombre, isbn, temas (conceptos) que manejan y descripcion de cada tema
@@ -428,6 +486,7 @@ def listar_temas_libros():
 
 
 @app.route("/api/libros/catalogo", methods=["GET"])
+@cacheado(lambda **_: _clave_lista())
 def listar_catalogo_libros():
     """
     Lista los datos minimos de cada libro (isbn, titulo, autores, anio de
@@ -444,6 +503,7 @@ def listar_catalogo_libros():
 
 
 @app.route("/api/libros/<isbn>", methods=["GET"])
+@cacheado(lambda isbn: f"books:{isbn}")
 def obtener_libro(isbn):
     """
     Obtiene un libro por ISBN
