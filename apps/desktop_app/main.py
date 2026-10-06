@@ -66,6 +66,7 @@ class Controlador:
         if self.ventana is not login:
             return  # el usuario ya inicio sesion manualmente mientras se validaba
         if datos.get("autenticado"):
+            self.auth.refresh_token = guardada.get("refresh_token")
             self.sesion_iniciada(guardada["token"], guardada.get("email") or datos.get("email", ""))
         else:
             session_store.borrar()
@@ -87,7 +88,7 @@ class Controlador:
     def sesion_iniciada(self, token, email):
         self.token_sesion = token
         try:
-            session_store.guardar(token, email)
+            session_store.guardar(token, email, self.auth.refresh_token)
         except OSError:
             pass  # sin disco la app funciona igual; solo no recordara la sesion
         self._cambiar_ventana(MainWindow(self, token, email))
