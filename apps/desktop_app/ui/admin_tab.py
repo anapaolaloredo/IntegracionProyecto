@@ -135,7 +135,7 @@ class AdminTab(QWidget):
         def fallo(exc):
             self._habilitar()
             if isinstance(exc, SesionExpirada):
-                self.c.ventana.cerrar_sesion(motivo=str(exc), avisar_servidor=False)
+                self.c.ventana.sesion_requerida(str(exc))
                 return
             poner_mensaje(self.mensaje, f"{metodo} falló: {texto_error(exc)}", error=True)
 

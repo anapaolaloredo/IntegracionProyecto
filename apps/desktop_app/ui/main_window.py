@@ -1,5 +1,5 @@
-"""Panel principal: pestanas separadas para Sesion y perfil, Catalogo,
-Administracion, Estado de los servicios y Configuracion, mas el registro
+"""Panel principal: pestanas separadas para Catalogo (vista principal),
+Administracion, Sesion y perfil, Estado de los servicios y Configuracion, mas el registro
 HTTP. Aqui viven los temporizadores de salud y de expiracion de sesion."""
 
 from datetime import datetime, timedelta
@@ -43,14 +43,16 @@ class SessionTab(QWidget):
         caja = QGroupBox("Sesión y perfil (GET /session)")
         caja.setLayout(form)
 
-        btn_actualizar = QPushButton("Actualizar datos")
+        self.btn_actualizar = QPushButton("Actualizar datos")
         self.btn_extender = QPushButton("Extender sesión (+30 min)")
-        btn_salir = QPushButton("Cerrar sesión")
-        btn_actualizar.clicked.connect(ventana.sincronizar_sesion)
+        self.btn_salir = QPushButton("Cerrar sesión")
+        self.btn_login = QPushButton("Iniciar sesión")
+        self.btn_actualizar.clicked.connect(ventana.sincronizar_sesion)
         self.btn_extender.clicked.connect(ventana.extender_sesion)
-        btn_salir.clicked.connect(ventana.cerrar_sesion)
+        self.btn_salir.clicked.connect(ventana.cerrar_sesion)
+        self.btn_login.clicked.connect(ventana.iniciar_sesion)
         barra = QHBoxLayout()
-        for b in (btn_actualizar, self.btn_extender, btn_salir):
+        for b in (self.btn_actualizar, self.btn_extender, self.btn_salir, self.btn_login):
             barra.addWidget(b)
         barra.addStretch()
 
@@ -127,11 +129,12 @@ class MainWindow(QMainWindow):
         self.c = controlador
         self.token = token
         self.email = email
+        self.invitado = token is None  # sin sesion: catalogo publico, sin escrituras
         self.restantes = None
         self.avisado = False
         self.salud_en_curso = False
         self.saliendo = False
-        self.setWindowTitle(f"Librería — {email}")
+        self.setWindowTitle("Librería — invitado" if self.invitado else f"Librería — {email}")
         self.resize(1250, 820)
 
         # Aviso de expiracion (oculto hasta que falten <= 5 min)
@@ -151,11 +154,12 @@ class MainWindow(QMainWindow):
         self.estado = StatusTab(self)
         self.config = ConfigPanel(controlador.config, controlador.registro.entrada.emit)
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.sesion, "Sesión y perfil")
         self.tabs.addTab(self.catalogo, "Catálogo de libros")
         self.tabs.addTab(self.admin, "Administración de libros")
+        self.tabs.addTab(self.sesion, "Sesión y perfil")
         self.tabs.addTab(self.estado, "Estado de los servicios")
         self.tabs.addTab(self.config, "Configuración del servidor")
+        self._modo_sesion()
         self.catalogo.editar.connect(self._editar_en_admin)
         self.admin.catalogo_cambio.connect(self.catalogo.recargar)
         self.config.guardada.connect(self._config_guardada)
@@ -192,7 +196,29 @@ class MainWindow(QMainWindow):
         self.catalogo.ver_todo()
 
     # ---- sesion ----
+    def _modo_sesion(self):
+        """Invitado: solo 'Iniciar sesion'. Con sesion: actualizar, extender y cerrar."""
+        for b in (self.sesion.btn_actualizar, self.sesion.btn_extender, self.sesion.btn_salir):
+            b.setVisible(not self.invitado)
+        self.sesion.btn_login.setVisible(self.invitado)
+        if self.invitado:
+            self.sesion.correo.setText("Invitado (sin sesión)")
+            poner_mensaje(self.sesion.mensaje, "Puedes consultar el catálogo sin iniciar sesión. "
+                          "Para crear, actualizar o eliminar libros necesitas iniciar sesión.")
+
+    def iniciar_sesion(self):
+        self.c.pedir_login()
+
+    def sesion_requerida(self, motivo):
+        """Una escritura fue rechazada o no hay token: invitado -> login; con sesion vencida -> invitado."""
+        if self.invitado:
+            self.c.pedir_login(motivo)
+        else:
+            self.cerrar_sesion(motivo=motivo, avisar_servidor=False)
+
     def sincronizar_sesion(self):
+        if self.invitado:
+            return
         token = self.token
         ejecutar(lambda: self.c.auth.consultar_sesion(token), self._sesion_ok, self._sesion_error)
 
@@ -246,7 +272,8 @@ class MainWindow(QMainWindow):
         self.banner_texto.setText(f"⚠️  Tu sesión expira en {texto}. Extiéndela para no perder el acceso.")
 
     def _vista_cambio(self, indice):
-        log_terminal("UI", f"vista -> {self.tabs.tabText(indice)}  |  token en uso: Bearer {self.token}")
+        log_terminal("UI", f"vista -> {self.tabs.tabText(indice)}  |  token en uso: "
+                              f"{'(invitado, sin token)' if self.invitado else 'Bearer ' + self.token}")
 
     def extender_sesion(self):
         token = self.token

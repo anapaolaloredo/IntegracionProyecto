@@ -16,8 +16,7 @@ from core.auth_api import AuthApi
 from core.books_api import BooksApi
 from core.config import AppConfig
 from core.http import HttpClient
-from ui.async_task import ejecutar
-from ui.common import RegistroHttp, texto_error
+from ui.common import RegistroHttp, poner_mensaje, texto_error
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
 
@@ -45,32 +44,13 @@ class Controlador:
         self._construir_clientes()
 
     def iniciar(self):
+        """El catalogo es publico: sin sesion guardada se abre como invitado. Con una sesion
+        guardada se abre con su token y la propia ventana la valida contra el servidor."""
         guardada = session_store.cargar()
-        if not guardada:
-            self.mostrar_login()
-            return
-        self.mostrar_login(email=guardada.get("email", ""))
-        login = self.ventana
-        login.mensaje.setText("Validando la sesión guardada con el servidor…")
-        token = guardada["token"]
-
-        def fallo(exc):
-            if self.ventana is login:
-                self.mostrar_login("No se pudo validar la sesión guardada: " + texto_error(exc),
-                                   guardada.get("email", ""))
-
-        ejecutar(lambda: self.auth.consultar_sesion(token),
-                 lambda datos: self._validada(datos, guardada, login), fallo)
-
-    def _validada(self, datos, guardada, login):
-        if self.ventana is not login:
-            return  # el usuario ya inicio sesion manualmente mientras se validaba
-        if datos.get("autenticado"):
-            self.sesion_iniciada(guardada["token"], guardada.get("email") or datos.get("email", ""))
+        if guardada:
+            self.sesion_iniciada(guardada["token"], guardada.get("email", ""))
         else:
-            session_store.borrar()
-            self.mostrar_login("Tu sesión guardada ya no es válida en el servidor (expiró o se cerró). "
-                               "Inicia sesión de nuevo.", guardada.get("email", ""))
+            self.mostrar_invitado()
 
     def _cambiar_ventana(self, nueva):
         anterior, self.ventana = self.ventana, nueva
@@ -82,7 +62,18 @@ class Controlador:
     def mostrar_login(self, mensaje=None, email=""):
         login = LoginWindow(self, mensaje, email)
         login.autenticado.connect(self.sesion_iniciada)
+        login.invitado.connect(self.mostrar_invitado)
         self._cambiar_ventana(login)
+
+    def mostrar_invitado(self, mensaje=None, error=True):
+        """Ventana principal sin sesion: solo lecturas publicas."""
+        self.token_sesion = None
+        self._cambiar_ventana(MainWindow(self, None, None))
+        if mensaje:
+            poner_mensaje(self.ventana.sesion.mensaje, mensaje, error=error)
+
+    def pedir_login(self, mensaje=None):
+        self.mostrar_login(mensaje)
 
     def sesion_iniciada(self, token, email):
         self.token_sesion = token
@@ -95,11 +86,8 @@ class Controlador:
     def sesion_cerrada(self, ventana, motivo=None, error=True):
         if ventana is not self.ventana:
             return
-        self.token_sesion = None
         session_store.borrar()
-        self.mostrar_login(motivo)
-        if motivo and not error:
-            self.ventana.mensaje.setStyleSheet("color: #2e7d32;")
+        self.mostrar_invitado(motivo, error)
 
 
 def manejador_global(tipo, valor, tb):

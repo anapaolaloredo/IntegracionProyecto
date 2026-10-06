@@ -15,6 +15,7 @@ from ui.config_panel import ConfigPanel
 
 class LoginWindow(QWidget):
     autenticado = Signal(str, str)  # token, email
+    invitado = Signal()  # seguir al catalogo sin iniciar sesion
 
     def __init__(self, controlador, mensaje_inicial=None, email_inicial=""):
         super().__init__()
@@ -33,6 +34,8 @@ class LoginWindow(QWidget):
         self.servidor.setStyleSheet("color: gray;")
         btn_config = QPushButton("Configuración del servidor…")
         btn_config.clicked.connect(self._abrir_config)
+        btn_invitado = QPushButton("Volver al catálogo (sin iniciar sesión)")
+        btn_invitado.clicked.connect(self.invitado.emit)
         pie = QHBoxLayout()
         pie.addWidget(self.servidor, 1)
         pie.addWidget(btn_config)
@@ -41,6 +44,7 @@ class LoginWindow(QWidget):
         capa.addWidget(titulo)
         capa.addWidget(self.tabs)
         capa.addWidget(self.mensaje)
+        capa.addWidget(btn_invitado)
         capa.addLayout(pie)
         self._actualizar_servidor()
         if mensaje_inicial:
