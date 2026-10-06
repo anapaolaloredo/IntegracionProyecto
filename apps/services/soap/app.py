@@ -5,11 +5,7 @@ Fuente de verdad del formato de salida: /apps/services/soap/library.xml
 Acceso a datos exclusivamente con psycopg2 (sin ORM).
 """
 
-import json
 import os
-import urllib.error
-import urllib.request
-from functools import wraps
 from xml.etree import ElementTree as ET
 
 import psycopg2
@@ -19,6 +15,13 @@ from dotenv import load_dotenv
 from flasgger import Swagger
 from flask import Flask, Response, request
 from flask_cors import CORS
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from common import jwt_auth  # noqa: E402
+from common.web import parse_origins  # noqa: E402
 
 load_dotenv()
 
@@ -30,18 +33,17 @@ DB_CONFIG = {
     "password": os.getenv("DB_PASSWORD", "library666"),
 }
 
-# El servicio de login es quien emite y valida los tokens de sesion.
-LOGIN_URL = os.getenv("LOGIN_URL", "http://localhost:5000").rstrip("/")
-LOGIN_TIMEOUT = float(os.getenv("LOGIN_TIMEOUT", "3"))
+LOG_TOKENS = os.getenv("LOG_TOKENS", "true").lower() == "true"
+jwt_auth.obtener_secret()  # el servicio no arranca sin SECRET_KEY
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": os.getenv("CORS_ORIGINS", "*")}})
+CORS(app, resources={r"/api/*": {"origins": parse_origins(os.getenv("CORS_ORIGINS", "*"))}})
 app.config["SWAGGER"] = {"title": "Library Books API", "uiversion": 3}
 Swagger(app, template={
     "securityDefinitions": {
         "Bearer": {
             "type": "apiKey", "name": "Authorization", "in": "header",
-            "description": "Token de sesion del servicio login: Bearer <session_token>",
+            "description": "JWT de acceso emitido por el servicio login: Bearer <session_token>",
         }
     }
 })
@@ -265,40 +267,20 @@ def error_xml_response(message, status):
     return Response(body, status=status, mimetype="application/xml")
 
 
-def sesion_valida(token):
-    """Pregunta al servicio login si el token tiene una sesion vigente.
-    Regresa True/False; lanza OSError si login no responde."""
-    req = urllib.request.Request(
-        f"{LOGIN_URL}/session?format=json",
-        headers={"Authorization": f"Bearer {token}"},
-    )
-    with urllib.request.urlopen(req, timeout=LOGIN_TIMEOUT) as resp:
-        return bool(json.load(resp).get("autenticado"))
+def _registrar_acceso(token, datos, resultado):
+    ruta = f"{request.method} {request.path}"
+    if resultado:
+        estado = f"{resultado[0]} {resultado[1]}"
+    else:
+        estado = f"JWT valido (user_id={datos['user_id']}, role_id={datos['role_id']})"
+    mostrado = (f"Bearer {token}" if token else "(ausente)") if LOG_TOKENS else \
+        ("(presente)" if token else "(ausente)")
+    print(f"[BOOKS] {ruta}  |  Authorization: {mostrado} -> {estado}", flush=True)
 
 
-def requiere_sesion(vista):
-    """Protege las operaciones de escritura: exige Authorization: Bearer <token>
-    con una sesion vigente en login. Las lecturas (GET) no lo usan y siguen publicas."""
-    @wraps(vista)
-    def envoltura(*args, **kwargs):
-        auth = request.headers.get("Authorization", "")
-        token = auth[len("Bearer "):].strip() if auth.startswith("Bearer ") else ""
-        ruta = f"{request.method} {request.path}"
-        if not token:
-            print(f"[BOOKS] {ruta}  |  Authorization: (ausente) -> 401", flush=True)
-            return error_xml_response("Se requiere Authorization: Bearer <token>", 401)
-        try:
-            valida = sesion_valida(token)
-        except (OSError, ValueError):
-            print(f"[BOOKS] {ruta}  |  Authorization: Bearer {token} -> login no responde, 503", flush=True)
-            # Sin poder validar, se rechaza (fail closed) en lugar de dejar pasar.
-            return error_xml_response("No se pudo validar la sesion con el servicio de login", 503)
-        print(f"[BOOKS] {ruta}  |  Authorization: Bearer {token} -> "
-              f"{'sesion valida' if valida else 'token invalido, 401'}", flush=True)
-        if not valida:
-            return error_xml_response("Token de sesion invalido o expirado", 401)
-        return vista(*args, **kwargs)
-    return envoltura
+# Protege las operaciones de escritura con un JWT de acceso valido (cualquier rol,
+# igual que antes). Las lecturas (GET) no lo usan y siguen publicas.
+requiere_sesion = jwt_auth.requiere_jwt(error_response=error_xml_response, on_event=_registrar_acceso)
 
 
 def get_or_create_id(cur, table, id_col, name_col, name):
