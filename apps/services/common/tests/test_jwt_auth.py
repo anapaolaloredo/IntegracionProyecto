@@ -150,3 +150,21 @@ def test_on_event_recibe_resultado_y_error_response_personalizado():
     assert eventos[-1][2][0] == 401
     c.post("/x", headers=_h(crear_token(1, 2, "access", 60)))
     assert eventos[-1][2] is None
+
+
+def test_secret_de_ejemplo_se_rechaza(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "Change-Me-same-value-in-every-service")
+    with pytest.raises(RuntimeError) as exc:
+        jwt_auth.obtener_secret()
+    assert "Change-Me" not in str(exc.value)
+
+
+def test_secret_de_31_caracteres_se_rechaza(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "a" * 31)
+    with pytest.raises(RuntimeError):
+        jwt_auth.obtener_secret()
+
+
+def test_secret_de_32_caracteres_se_acepta(monkeypatch):
+    monkeypatch.setenv("SECRET_KEY", "a" * 32)
+    assert jwt_auth.obtener_secret() == "a" * 32

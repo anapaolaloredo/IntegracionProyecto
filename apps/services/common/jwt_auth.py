@@ -26,6 +26,10 @@ def obtener_secret():
     secret = os.getenv("SECRET_KEY")
     if not secret:
         raise RuntimeError("SECRET_KEY no esta definida en el entorno")
+    if secret.lower().startswith("change-me") or len(secret) < 32:
+        raise RuntimeError(
+            "SECRET_KEY no es valida: debe tener al menos 32 caracteres y no ser el valor de ejemplo"
+        )
     return secret
 
 

@@ -504,8 +504,6 @@ def crear_libro():
     responses:
       401:
         description: Falta el token Bearer, o es invalido/expirado
-      503:
-        description: El servicio de login no responde
       201:
         description: Libro creado (XML)
       400:
@@ -568,8 +566,6 @@ def actualizar_libro(isbn):
     responses:
       401:
         description: Falta el token Bearer, o es invalido/expirado
-      503:
-        description: El servicio de login no responde
       200:
         description: Libro actualizado (XML)
       404:
@@ -583,7 +579,7 @@ def actualizar_libro(isbn):
             with conn.cursor() as cur:
                 cur.execute(
                     "SELECT id_libro, titulo, anio_publicacion, precio, stock, id_formato "
-                    "FROM libros WHERE isbn = %s",
+                    "FROM libros WHERE isbn = %s FOR UPDATE",
                     (isbn,),
                 )
                 row = cur.fetchone()
@@ -637,12 +633,12 @@ def eliminar_libro(isbn):
     responses:
       401:
         description: Falta el token Bearer, o es invalido/expirado
-      503:
-        description: El servicio de login no responde
       200:
         description: Libro eliminado (XML)
       404:
         description: Libro no encontrado
+      409:
+        description: El libro tiene pedidos asociados
     """
     conn = get_connection()
     try:
@@ -651,6 +647,8 @@ def eliminar_libro(isbn):
                 cur.execute("DELETE FROM libros WHERE isbn = %s RETURNING id_libro", (isbn,))
                 if cur.fetchone() is None:
                     return error_xml_response("Libro no encontrado", 404)
+    except psycopg2.errors.ForeignKeyViolation:
+        return error_xml_response("El libro tiene pedidos asociados y no se puede eliminar", 409)
     finally:
         conn.close()
 

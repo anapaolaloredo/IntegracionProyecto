@@ -18,7 +18,7 @@ tokens JWT (módulo común en `apps/services/common`).
 
 | Variable | Servicios | Notas |
 |----------|-----------|-------|
-| `SECRET_KEY` | todos | **Debe ser idéntica en los seis servicios**, si no los tokens se rechazan. |
+| `SECRET_KEY` | todos | **Debe ser idéntica en los seis servicios**, si no los tokens se rechazan. Mínimo 32 caracteres; el servicio no arranca con el valor de ejemplo `change-me...`. |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | todos | `login` usa `auth_service_user`; el resto `library_user` en los ejemplos. |
 | `PORT` | todos | Puerto de escucha (tabla anterior). |
 | `CORS_ORIGINS` | soap, users, authors, pedidos, pagos | Orígenes separados por comas. En producción listar **solo** los clientes, nunca `*`. |
