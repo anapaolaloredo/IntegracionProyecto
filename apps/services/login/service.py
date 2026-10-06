@@ -3,9 +3,11 @@ traduce reglas de negocio a excepciones de dominio. No conoce Flask."""
 
 import re
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 
 from config.settings import SESSION_TTL_MINUTES, CODE_TTL_MINUTES, REFRESH_TTL_DAYS
+from common import redis_store
 from common.jwt_auth import ROLE_IDS, TokenInvalido, crear_token, decodificar
 from db import repository
 from auth.security import (
@@ -45,19 +47,26 @@ def iniciar_login(email, password):
     enviar_codigo(email, codigo)
 
 
-def _emitir_acceso(usuario):
+SESSION_TTL = SESSION_TTL_MINUTES * 60
+REFRESH_TTL = REFRESH_TTL_DAYS * 86400
+
+
+def _iso(exp):
+    return datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
+
+
+def _nuevo_acceso(usuario, jti_refresh, exp_refresh):
+    """Emite un JWT de acceso y guarda su sesion en Redis (TTL = vigencia del token).
+    Lanza RedisNoDisponible si no puede guardarla: nunca se entrega un token sin sesion."""
     role_id = ROLE_IDS[usuario["rol"]]
-    token = crear_token(usuario["id_usuario"], role_id, "access", SESSION_TTL_MINUTES * 60)
-    return token, decodificar(token, "access")["exp"]
-
-
-def _datos_acceso(usuario):
-    token, exp = _emitir_acceso(usuario)
-    return {
-        "session_token": token,
-        "expira_en": datetime.fromtimestamp(exp, tz=timezone.utc).isoformat(),
-        "segundos_restantes": max(0, exp - int(time.time())),
-    }
+    jti = uuid.uuid4().hex
+    token = crear_token(usuario["id_usuario"], role_id, "access", SESSION_TTL, jti=jti)
+    exp = decodificar(token, "access")["exp"]
+    redis_store.guardar_sesion(jti, {
+        "user_id": usuario["id_usuario"], "role_id": role_id, "email": usuario["correo"],
+        "jti_refresh": jti_refresh, "exp_refresh": exp_refresh}, SESSION_TTL)
+    return {"session_token": token, "expira_en": _iso(exp),
+            "segundos_restantes": max(0, exp - int(time.time()))}
 
 
 def _decodificar_o_none(token, tipo):
@@ -69,6 +78,21 @@ def _decodificar_o_none(token, tipo):
         return None
 
 
+def _sesion_activa(datos):
+    """Sesion vigente en Redis para un JWT de acceso ya decodificado, o SesionInvalida."""
+    if redis_store.jti_revocado(datos["jti"]):
+        raise SesionInvalida("Token de sesion revocado.")
+    sesion = redis_store.obtener_sesion(datos["jti"])
+    if sesion is None:
+        raise SesionInvalida("La sesion no existe o ya expiro.")
+    return sesion
+
+
+def _cerrar_acceso(jti, exp):
+    redis_store.revocar_jti(jti, exp)
+    redis_store.borrar_sesion(jti)
+
+
 def verificar_login(email, codigo):
     usuario = repository.obtener_usuario_por_correo(email)
     if not usuario:
@@ -76,23 +100,34 @@ def verificar_login(email, codigo):
     pendiente = repository.obtener_codigo_vigente(usuario["id_usuario"])
     if not pendiente or not verificar_codigo(codigo, pendiente["codigo_hash"]):
         raise CodigoInvalido("Codigo invalido o expirado.")
-    repository.marcar_codigo_usado(pendiente["id_codigo"])
     role_id = ROLE_IDS[usuario["rol"]]
-    return {
-        "session_token": crear_token(usuario["id_usuario"], role_id, "access", SESSION_TTL_MINUTES * 60),
-        "refresh_token": crear_token(usuario["id_usuario"], role_id, "refresh", REFRESH_TTL_DAYS * 86400),
-    }
+    jti_refresh = uuid.uuid4().hex
+    refresh = crear_token(usuario["id_usuario"], role_id, "refresh", REFRESH_TTL, jti=jti_refresh)
+    exp_refresh = decodificar(refresh, "refresh")["exp"]
+    redis_store.guardar_refresh(jti_refresh, usuario["id_usuario"], REFRESH_TTL)
+    acceso = _nuevo_acceso(usuario, jti_refresh, exp_refresh)
+    # El codigo se marca usado solo cuando la sesion ya quedo guardada: si Redis falla no se quema.
+    repository.marcar_codigo_usado(pendiente["id_codigo"])
+    return {"session_token": acceso["session_token"], "refresh_token": refresh}
 
 
 def cerrar_sesion(token):
-    # JWT sin estado: el token vive hasta expirar; aqui solo se valida.
-    if not _decodificar_o_none(token, "access"):
+    datos = _decodificar_o_none(token, "access")
+    if not datos:
         raise SesionInvalida("Token de sesion invalido o expirado.")
+    sesion = _sesion_activa(datos)
+    redis_store.borrar_refresh(sesion["jti_refresh"])
+    redis_store.revocar_jti(sesion["jti_refresh"], sesion["exp_refresh"])
+    _cerrar_acceso(datos["jti"], datos["exp"])
 
 
 def consultar_sesion(token):
     datos = _decodificar_o_none(token, "access")
     if not datos:
+        return {"autenticado": False}
+    try:
+        _sesion_activa(datos)
+    except SesionInvalida:
         return {"autenticado": False}
     usuario = repository.obtener_usuario_por_id(datos["user_id"])
     if not usuario:
@@ -103,7 +138,7 @@ def consultar_sesion(token):
         "email": usuario["correo"],
         "nombre": usuario["nombre"],
         "role_id": datos["role_id"],
-        "expira_en": datetime.fromtimestamp(datos["exp"], tz=timezone.utc).isoformat(),
+        "expira_en": _iso(datos["exp"]),
         "segundos_restantes": max(0, datos["exp"] - int(time.time())),
     }
 
@@ -112,20 +147,25 @@ def extender_sesion(token):
     datos = _decodificar_o_none(token, "access")
     if not datos:
         raise SesionInvalida("Token de sesion invalido o expirado.")
+    sesion = _sesion_activa(datos)
     usuario = repository.obtener_usuario_por_id(datos["user_id"])
     if not usuario:
         raise SesionInvalida("La cuenta ya no existe.")
-    return _datos_acceso(usuario)
+    nuevo = _nuevo_acceso(usuario, sesion["jti_refresh"], sesion["exp_refresh"])
+    _cerrar_acceso(datos["jti"], datos["exp"])  # el token anterior deja de valer
+    return nuevo
 
 
 def refrescar_sesion(refresh_token):
     datos = _decodificar_o_none(refresh_token, "refresh")
     if not datos:
         raise SesionInvalida("Refresh token invalido o expirado.")
+    if redis_store.jti_revocado(datos["jti"]) or not redis_store.refresh_vigente(datos["jti"]):
+        raise SesionInvalida("Refresh token revocado o desconocido.")
     usuario = repository.obtener_usuario_por_id(datos["user_id"])
     if not usuario:
         raise SesionInvalida("La cuenta ya no existe.")
-    return _datos_acceso(usuario)
+    return _nuevo_acceso(usuario, datos["jti"], datos["exp"])
 
 
 def verificar_salud():

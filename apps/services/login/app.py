@@ -6,7 +6,8 @@ from flask import Flask, request
 from flasgger import Swagger
 
 from config.settings import PORT
-from common import jwt_auth
+from common import jwt_auth, redis_store
+from common.ops import registrar_operacion
 import service
 from errors import ErrorDominio
 from render.formatters import responder
@@ -15,6 +16,7 @@ app = Flask(__name__)
 app.config["SWAGGER"] = {"title": "Microservicio de Autenticacion", "uiversion": 3}
 Swagger(app)
 jwt_auth.obtener_secret()  # falla al arrancar si no hay SECRET_KEY
+registrar_operacion(app, "login", health=False)  # /metrics; /health propio (usa formato XML/JSON)
 
 
 def _token_de_header():
@@ -27,6 +29,12 @@ def _token_de_header():
 @app.errorhandler(ErrorDominio)
 def manejar_error_dominio(err):
     return responder("error", {"mensaje": str(err)}, status=err.status)
+
+
+@app.errorhandler(redis_store.RedisNoDisponible)
+def manejar_redis_no_disponible(_):
+    return responder("error", {"mensaje": "Servicio de sesiones no disponible. Intenta de nuevo en unos minutos."},
+                     status=503)
 
 
 @app.route("/register", methods=["POST"])
@@ -130,7 +138,7 @@ def login_verify():
 @app.route("/logout", methods=["POST"])
 def logout():
     """
-    Cierra la sesion asociada al token del header Authorization.
+    Cierra la sesion: borra sesion y refresh en Redis y revoca el JWT.
     ---
     parameters:
       - in: header
@@ -179,7 +187,7 @@ def session_status():
 @app.route("/session/extend", methods=["POST"])
 def session_extend():
     """
-    Emite un session_token (JWT) nuevo de SESSION_TTL_MINUTES (30) a partir de ahora; el anterior sigue valiendo hasta expirar.
+    Emite un session_token (JWT) nuevo de SESSION_TTL_MINUTES (30) a partir de ahora; emite un token nuevo y revoca el anterior.
     ---
     parameters:
       - in: header
@@ -232,7 +240,7 @@ def session_refresh():
 @app.route("/health", methods=["GET"])
 def health():
     """
-    Verifica el estado del microservicio y de PostgreSQL.
+    Verifica el estado del microservicio de PostgreSQL y de Redis.
     ---
     parameters:
       - in: query
@@ -242,13 +250,14 @@ def health():
         default: xml
     responses:
       200:
-        description: "Servicio saludable. JSON: {\\"status\\": \\"ok\\", \\"db\\": \\"ok\\"}"
+        description: "Servicio saludable. JSON: {\\"status\\": \\"ok\\", \\"db\\": \\"ok\\", \\"redis\\": \\"ok\\"}"
       503:
         description: PostgreSQL no responde
     """
-    if service.verificar_salud():
-        return responder("salud", {"status": "ok", "db": "ok"})
-    return responder("salud", {"status": "error", "db": "error"}, status=503)
+    db_ok = service.verificar_salud()
+    cuerpo = {"status": "ok" if db_ok else "error", "db": "ok" if db_ok else "error",
+              "redis": redis_store.estado()}
+    return responder("salud", cuerpo, status=200 if db_ok else 503)
 
 
 if __name__ == "__main__":
