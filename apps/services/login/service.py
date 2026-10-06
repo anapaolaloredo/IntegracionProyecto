@@ -65,6 +65,7 @@ def _nuevo_acceso(usuario, jti_refresh, exp_refresh):
     redis_store.guardar_sesion(jti, {
         "user_id": usuario["id_usuario"], "role_id": role_id, "email": usuario["correo"],
         "jti_refresh": jti_refresh, "exp_refresh": exp_refresh}, SESSION_TTL)
+    redis_store.registrar_acceso_de_refresh(jti_refresh, jti)
     return {"session_token": token, "expira_en": _iso(exp),
             "segundos_restantes": max(0, exp - int(time.time()))}
 
@@ -85,6 +86,10 @@ def _sesion_activa(datos):
     sesion = redis_store.obtener_sesion(datos["jti"])
     if sesion is None:
         raise SesionInvalida("La sesion no existe o ya expiro.")
+    jti_refresh = sesion["jti_refresh"]
+    if (redis_store.jti_revocado(jti_refresh) or not redis_store.refresh_vigente(jti_refresh)
+            or sesion["exp_refresh"] <= int(time.time())):
+        raise SesionInvalida("La sesion de origen ya no es valida.")
     return sesion
 
 
@@ -118,6 +123,10 @@ def cerrar_sesion(token):
     sesion = _sesion_activa(datos)
     redis_store.borrar_refresh(sesion["jti_refresh"])
     redis_store.revocar_jti(sesion["jti_refresh"], sesion["exp_refresh"])
+    exp_acceso = int(time.time()) + SESSION_TTL
+    for jti in redis_store.accesos_de_refresh(sesion["jti_refresh"]):
+        _cerrar_acceso(jti, exp_acceso)  # todos los accesos vivos de este login
+    redis_store.borrar_accesos_de_refresh(sesion["jti_refresh"])
     _cerrar_acceso(datos["jti"], datos["exp"])
 
 

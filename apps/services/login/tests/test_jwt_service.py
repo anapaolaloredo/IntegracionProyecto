@@ -1,3 +1,4 @@
+import time
 from unittest.mock import patch
 
 import pytest
@@ -143,3 +144,38 @@ def test_cerrar_sesion_exige_token_valido():
         service.cerrar_sesion("basura")
     with pytest.raises(SesionInvalida):
         service.cerrar_sesion(None)
+
+
+def test_logout_revoca_tambien_los_accesos_hermanos_creados_por_refresh():
+    tokens = _login()
+    with patch.object(service.repository, "obtener_usuario_por_id", return_value=USUARIO):
+        hermano = service.refrescar_sesion(tokens["refresh_token"])["session_token"]
+        service.cerrar_sesion(tokens["session_token"])
+        assert service.consultar_sesion(hermano) == {"autenticado": False}
+        with pytest.raises(SesionInvalida):
+            service.extender_sesion(hermano)
+    assert redis_store.jti_revocado(decodificar(hermano)["jti"]) is True
+
+
+def test_extender_tras_exp_refresh_falla():
+    tokens = _login()
+    refresh = decodificar(tokens["refresh_token"], "refresh")
+    acceso = crear_token(5, ROLE_USER, "access", 600)
+    redis_store.guardar_sesion(decodificar(acceso)["jti"], {
+        "user_id": 5, "role_id": ROLE_USER, "email": "a@b.co",
+        "jti_refresh": refresh["jti"], "exp_refresh": int(time.time()) - 1}, 600)
+    with patch.object(service.repository, "obtener_usuario_por_id", return_value=USUARIO):
+        with pytest.raises(SesionInvalida):
+            service.extender_sesion(acceso)
+
+
+def test_acceso_hermano_con_refresh_revocado_no_puede_extender():
+    tokens = _login()
+    refresh = decodificar(tokens["refresh_token"], "refresh")
+    with patch.object(service.repository, "obtener_usuario_por_id", return_value=USUARIO):
+        hermano = service.refrescar_sesion(tokens["refresh_token"])["session_token"]
+        redis_store.revocar_jti(refresh["jti"], refresh["exp"])
+        with pytest.raises(SesionInvalida):
+            service.extender_sesion(hermano)
+        redis_store.borrar_refresh(refresh["jti"])
+        assert service.consultar_sesion(hermano) == {"autenticado": False}

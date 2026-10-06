@@ -179,7 +179,7 @@ def session_status():
         default: xml
     responses:
       200:
-        description: "Siempre 200. XML: <sesion><autenticado>true</autenticado>...</sesion>. JSON: {\\"autenticado\\": false}"
+        description: "200 (503 si Redis no esta disponible). XML: <sesion><autenticado>true</autenticado>...</sesion>. JSON: {\\"autenticado\\": false}"
     """
     return responder("sesion", service.consultar_sesion(_token_de_header()))
 
@@ -187,7 +187,7 @@ def session_status():
 @app.route("/session/extend", methods=["POST"])
 def session_extend():
     """
-    Emite un session_token (JWT) nuevo de SESSION_TTL_MINUTES (30) a partir de ahora; emite un token nuevo y revoca el anterior.
+    Emite un session_token (JWT) nuevo de SESSION_TTL_MINUTES (30) a partir de ahora y revoca el anterior.
     ---
     parameters:
       - in: header
@@ -240,7 +240,7 @@ def session_refresh():
 @app.route("/health", methods=["GET"])
 def health():
     """
-    Verifica el estado del microservicio de PostgreSQL y de Redis.
+    Verifica el estado del microservicio, de PostgreSQL y de Redis.
     ---
     parameters:
       - in: query

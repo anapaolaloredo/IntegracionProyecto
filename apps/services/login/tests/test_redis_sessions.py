@@ -25,8 +25,10 @@ def test_flujo_http_completo_login_session_extend_refresh_logout():
         assert nuevo["session_token"]
         refrescado = c.post("/session/refresh?format=json", json={"refresh_token": tokens["refresh_token"]})
         assert refrescado.status_code == 200
+        hermano = refrescado.get_json()["session_token"]
         assert c.post("/logout?format=json", headers=_bearer(nuevo["session_token"])).status_code == 200
         assert c.get("/session?format=json", headers=_bearer(nuevo["session_token"])).get_json() == {"autenticado": False}
+        assert c.get("/session?format=json", headers=_bearer(hermano)).get_json() == {"autenticado": False}
         assert c.post("/session/refresh?format=json",
                       json={"refresh_token": tokens["refresh_token"]}).status_code == 401
 

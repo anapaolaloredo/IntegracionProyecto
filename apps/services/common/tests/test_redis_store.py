@@ -39,6 +39,18 @@ def test_refresh_ida_vuelta_con_ttl_y_borrado():
     assert redis_store.refresh_vigente("r1") is False
 
 
+def test_accesos_de_refresh_ida_vuelta_con_ttl_y_borrado():
+    assert redis_store.accesos_de_refresh("r1") == []
+    redis_store.registrar_acceso_de_refresh("r1", "a1")
+    redis_store.registrar_acceso_de_refresh("r1", "a2")
+    redis_store.registrar_acceso_de_refresh("r1", "a1")
+    assert sorted(redis_store.accesos_de_refresh("r1")) == ["a1", "a2"]
+    assert redis_store.REFRESH_TTL_SEGUNDOS - 10 <= redis_store.cliente().ttl("refresh_access:r1") \
+        <= redis_store.REFRESH_TTL_SEGUNDOS
+    redis_store.borrar_accesos_de_refresh("r1")
+    assert redis_store.accesos_de_refresh("r1") == []
+
+
 @pytest.mark.parametrize("llamada", [
     lambda: redis_store.jti_revocado("a"),
     lambda: redis_store.revocar_jti("a", int(time.time()) + 10),
@@ -48,6 +60,9 @@ def test_refresh_ida_vuelta_con_ttl_y_borrado():
     lambda: redis_store.guardar_refresh("a", 1, 10),
     lambda: redis_store.refresh_vigente("a"),
     lambda: redis_store.borrar_refresh("a"),
+    lambda: redis_store.registrar_acceso_de_refresh("r", "a"),
+    lambda: redis_store.accesos_de_refresh("r"),
+    lambda: redis_store.borrar_accesos_de_refresh("r"),
 ])
 def test_operaciones_de_sesion_fallan_cerrado_si_redis_cae(redis_falso, llamada):
     testing.redis_caido(redis_falso)

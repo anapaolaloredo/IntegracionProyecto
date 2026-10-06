@@ -26,6 +26,7 @@ REDIS_TIMEOUT = float(os.getenv("REDIS_TIMEOUT", "2"))
 PREFIJO_REVOCADO = "jwt:revoked:"
 PREFIJO_SESION = "session:"
 PREFIJO_REFRESH = "refresh:"
+PREFIJO_ACCESOS = "refresh_access:"
 
 
 class RedisNoDisponible(Exception):
@@ -127,6 +128,26 @@ def refresh_vigente(jti):
 
 def borrar_refresh(jti):
     _cerrado("borrar_refresh", lambda c: c.delete(PREFIJO_REFRESH + jti))
+
+
+def registrar_acceso_de_refresh(jti_refresh, jti_acceso, ttl=None):
+    """Anota que jti_acceso fue emitido bajo jti_refresh (para revocarlos todos en el logout)."""
+    clave = PREFIJO_ACCESOS + jti_refresh
+    ttl = int(ttl or REFRESH_TTL_SEGUNDOS)
+
+    def op(c):
+        c.sadd(clave, jti_acceso)
+        c.expire(clave, ttl)
+    _cerrado("registrar_acceso_de_refresh", op)
+
+
+def accesos_de_refresh(jti_refresh):
+    miembros = _cerrado("accesos_de_refresh", lambda c: c.smembers(PREFIJO_ACCESOS + jti_refresh))
+    return list(miembros or [])
+
+
+def borrar_accesos_de_refresh(jti_refresh):
+    _cerrado("borrar_accesos_de_refresh", lambda c: c.delete(PREFIJO_ACCESOS + jti_refresh))
 
 
 # ---- cache publica (fail-open) ----
