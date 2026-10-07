@@ -104,6 +104,31 @@ misma instancia, así que `REDIS_URL=redis://:<password>@localhost:6379/0`. Requ
 - **No abrir el puerto 6379 en el firewall de GCP.**
 - `rediss://` (TLS) solo si algún día Redis queda en otra máquina.
 
+**Contraseña y formato de `REDIS_URL`.** La contraseña de `REDIS_URL` **debe ir codificada con porcentaje**:
+los caracteres `/`, `#`, `?`, `@`, `:` y `%` (entre otros) deben codificarse. Para generarla:
+
+```
+python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1],safe=""))' '<password>'
+```
+
+Una URL inválida (contraseña sin codificar o sin esquema `redis://`) no tumba los servicios: las rutas
+protegidas responden 503 (fail-closed), las lecturas públicas del catálogo caen a PostgreSQL y `/health`
+reporta `redis: error`. El mensaje de error nunca incluye la URL ni la contraseña.
+
+**Notas de despliegue** (nada de esto se verificó contra un Redis real):
+
+- Los tokens emitidos antes de este release no tienen `jti`, así que **todos los usuarios deben iniciar
+  sesión de nuevo una vez** tras desplegar.
+- **Persistencia**: si el Redis de GCP se reinicia sin persistencia, se pierden las claves de revocación y los
+  access tokens ya cerrados con logout (vigencia <= 30 min) volverían a ser aceptables, mientras que
+  sesiones y refresh tokens también se pierden (lo cual es seguro: hay que volver a entrar). Se recomienda
+  activar AOF (`appendonly yes`) o aceptar ese riesgo de forma consciente.
+- Si ese Redis sirve a otras aplicaciones, usar un índice de base dedicado (p. ej. `/1` al final de
+  `REDIS_URL`): los nombres `session:*`, `refresh:*` y `books:*` son genéricos y `cache_invalidar_libros`
+  recorre `books:*`.
+- Las escrituras de `authors` (renombrar/vincular/desvincular) **no invalidan** `books:*`: el catálogo puede
+  verse desactualizado hasta `BOOKS_CACHE_TTL` (60 s).
+
 Solo para desarrollo local: `cd apps/services && cp redis.env.example .env && docker compose up -d redis`
 (el `docker-compose.yml` es solo de desarrollo), o bien
 `brew install redis && redis-server --requirepass <password> --maxmemory 256mb --maxmemory-policy noeviction`.

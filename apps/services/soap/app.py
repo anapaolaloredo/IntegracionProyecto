@@ -22,12 +22,12 @@ from flask_cors import CORS
 import sys
 from pathlib import Path
 
+load_dotenv()  # antes de importar common: redis_store lee BOOKS_CACHE_TTL y REDIS_TIMEOUT al importarse
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from common import jwt_auth, redis_store  # noqa: E402
 from common.ops import registrar_operacion  # noqa: E402
 from common.web import parse_origins  # noqa: E402
-
-load_dotenv()
 
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),

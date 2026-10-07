@@ -66,6 +66,11 @@ def _nuevo_acceso(usuario, jti_refresh, exp_refresh):
         "user_id": usuario["id_usuario"], "role_id": role_id, "email": usuario["correo"],
         "jti_refresh": jti_refresh, "exp_refresh": exp_refresh}, SESSION_TTL)
     redis_store.registrar_acceso_de_refresh(jti_refresh, jti)
+    if redis_store.jti_revocado(jti_refresh):
+        # Un logout concurrente cerro el refresh mientras se emitia este acceso: no entregarlo.
+        redis_store.revocar_jti(jti, exp)
+        redis_store.borrar_sesion(jti)
+        raise SesionInvalida("La sesion fue cerrada.")
     return {"session_token": token, "expira_en": _iso(exp),
             "segundos_restantes": max(0, exp - int(time.time()))}
 

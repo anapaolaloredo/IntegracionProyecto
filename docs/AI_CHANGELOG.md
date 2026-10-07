@@ -110,3 +110,5 @@ Formato: fecha — resumen — archivos — referencia al detalle completo.
   `redis.env.example` son solo para desarrollo local. Documentado en `apps/services/README_JWT.md`.
 - **Verificación**: solo con fakeredis; **nada se ejecutó contra un Redis real**. Las pruebas opcionales
   (`common/tests/test_redis_real.py`, Task 8) deben correrse en la instancia de GCP; pendientes.
+- **Despliegue (aviso)**: los tokens previos no tienen `jti`, todos los usuarios deben iniciar sesión de nuevo una
+  vez; la contraseña de `REDIS_URL` debe codificarse con porcentaje (una URL inválida da 503 en rutas protegidas).

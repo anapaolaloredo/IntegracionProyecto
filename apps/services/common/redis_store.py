@@ -62,9 +62,14 @@ def cliente():
             url = os.getenv("REDIS_URL")
             if not url:
                 raise RedisNoDisponible("REDIS_URL no esta definida")
-            _cliente = redis.Redis.from_url(
-                url, decode_responses=True, socket_timeout=REDIS_TIMEOUT,
-                socket_connect_timeout=REDIS_TIMEOUT, health_check_interval=30, retry_on_timeout=True)
+            try:
+                _cliente = redis.Redis.from_url(
+                    url, decode_responses=True, socket_timeout=REDIS_TIMEOUT,
+                    socket_connect_timeout=REDIS_TIMEOUT, health_check_interval=30, retry_on_timeout=True)
+            except (ValueError, TypeError):
+                # from None: el mensaje original puede contener un fragmento de la contraseña.
+                raise RedisNoDisponible(
+                    "REDIS_URL invalida (revisa el formato y codifica la contraseña con porcentaje)") from None
         return _cliente
 
 

@@ -157,3 +157,18 @@ class FakeConn:
 
 def _ConexionOk():
     return FakeConn(FakeCursor(row=(1, "T", 2000, 10, 5, 1)))
+
+
+def test_redis_url_invalida_no_rompe_lecturas_ni_escrituras(c, monkeypatch):
+    redis_store.reiniciar()
+    monkeypatch.setenv("REDIS_URL", "redis://:s3cr/etPart@localhost:6379/0")
+    monkeypatch.setattr(books, "_db_ok", lambda: True)
+    monkeypatch.setattr(books, "get_connection", lambda: _ConexionOk())
+    monkeypatch.setattr(books, "guardar_relaciones", lambda *a, **k: None)
+    assert c.get("/api/libros").status_code == 200
+    # la autorizacion es fail-closed: sin Redis valido responde 503, nunca 500
+    assert c.put("/api/libros/123", json={"title": "N"}, headers=_admin()).status_code == 503
+    # con la autorizacion superada, la invalidacion (fail-open) no convierte la escritura en 500
+    monkeypatch.setattr(redis_store, "jti_revocado", lambda jti: False)
+    assert c.put("/api/libros/123", json={"title": "N"}, headers=_admin()).status_code == 200
+    assert c.get("/health").get_json()["redis"] == "error"

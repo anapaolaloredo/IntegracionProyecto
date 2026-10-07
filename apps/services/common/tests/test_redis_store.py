@@ -129,3 +129,22 @@ def test_url_enmascarada_oculta_la_contrasena():
     assert redis_store.url_enmascarada("redis://:s3cr3t@host:6379/0") == "redis://:***@host:6379/0"
     assert redis_store.url_enmascarada("redis://user:s3cr3t@host:6379/0") == "redis://user:***@host:6379/0"
     assert "s3cr3t" not in redis_store.url_enmascarada("rediss://:s3cr3t@h/0")
+
+
+@pytest.mark.parametrize("url", ["redis://:s3cr/etPart@localhost:6379/0", "localhost:6379"])
+def test_redis_url_invalida_falla_controlado(monkeypatch, url):
+    redis_store.reiniciar()
+    monkeypatch.setenv("REDIS_URL", url)
+    metrics.reiniciar()
+    assert redis_store.cache_get("books:1") is None
+    assert "redis_errors_total" in metrics.render("t")
+    redis_store.cache_set("books:1", "x")
+    redis_store.cache_invalidar_libros()
+    with pytest.raises(RedisNoDisponible) as info:
+        redis_store.jti_revocado("a")
+    exc = info.value
+    for texto in (str(exc), repr(exc)):
+        assert "s3cr" not in texto and "etPart" not in texto
+    assert exc.__cause__ is None and exc.__suppress_context__ is True
+    assert redis_store._cliente is None
+    assert redis_store.estado() == "error"

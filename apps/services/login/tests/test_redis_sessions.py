@@ -1,9 +1,11 @@
+import pytest
 from unittest.mock import patch
 
 import app as login_app
 import service
 from common import redis_store, testing
 from common.jwt_auth import ROLE_USER, crear_token
+from errors import SesionInvalida
 from tests.test_jwt_service import USUARIO, _login
 
 
@@ -86,3 +88,23 @@ def test_la_contrasena_de_redis_no_sale_en_health_ni_metrics(monkeypatch):
     with patch.object(service, "verificar_salud", return_value=True):
         assert "SuperSecreta99" not in c.get("/health?format=json").get_data(as_text=True)
     assert "SuperSecreta99" not in c.get("/metrics").get_data(as_text=True)
+
+
+def test_refresh_que_pierde_carrera_con_logout_no_entrega_token(monkeypatch):
+    tokens = _login()
+    refresh = service.decodificar(tokens["refresh_token"], "refresh")
+    original = redis_store.registrar_acceso_de_refresh
+    nuevos = []
+
+    def registrar_y_logout(jti_refresh, jti, *a, **k):
+        nuevos.append(jti)
+        original(jti_refresh, jti, *a, **k)
+        redis_store.revocar_jti(jti_refresh, refresh["exp"])  # logout gana la carrera
+
+    monkeypatch.setattr(redis_store, "registrar_acceso_de_refresh", registrar_y_logout)
+    with patch.object(service.repository, "obtener_usuario_por_id", return_value=USUARIO):
+        with pytest.raises(SesionInvalida):
+            service.refrescar_sesion(tokens["refresh_token"])
+    assert redis_store.jti_revocado(nuevos[0]) is True
+    assert redis_store.obtener_sesion(nuevos[0]) is None
+    assert not redis_store.cliente().keys("session:" + nuevos[0])
