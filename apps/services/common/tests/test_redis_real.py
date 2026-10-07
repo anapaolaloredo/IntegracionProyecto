@@ -22,7 +22,43 @@ import redis
 from common import redis_store
 
 URL = os.getenv("REDIS_REAL_URL")
-pytestmark = pytest.mark.skipif(not URL, reason="define REDIS_REAL_URL para probar contra Redis real")
+
+
+def url_sin_userinfo(url):
+    """
+    Construye una URL quitando el userinfo (usuario:contraseña).
+
+    Ejemplos:
+    - redis://:s3cr3t@localhost:6379/0 -> redis://localhost:6379/0
+    - rediss://:s3cr3t@[::1]:6380/2 -> rediss://[::1]:6380/2
+    - redis://localhost:6379/0 -> None (sin userinfo, nada que quitar)
+
+    Args:
+        url: URL a procesar
+
+    Returns:
+        URL sin userinfo, o None si la URL no tiene userinfo
+    """
+    parsed = urllib.parse.urlsplit(url)
+
+    # Si no hay userinfo (username o password), no hay nada que quitar
+    if not parsed.username and not parsed.password:
+        return None
+
+    # Extraer la parte host:port sin userinfo usando rpartition
+    # Esto preserva IPv6 brackets, case, y port exactamente como en la URL original
+    host_port = parsed.netloc.rpartition("@")[2]
+
+    # Reconstruir la URL sin userinfo
+    nuevo_netloc = host_port
+    nueva_url = urllib.parse.urlunsplit((
+        parsed.scheme,
+        nuevo_netloc,
+        parsed.path,
+        parsed.query,
+        parsed.fragment
+    ))
+    return nueva_url
 
 
 @pytest.fixture
@@ -47,10 +83,32 @@ def cleanup_jti(real):
             pass
 
 
+# Tests puros de lógica URL (sin skipif de módulo, siempre se ejecutan)
+def test_url_sin_userinfo_basico():
+    """Prueba de lógica pura: URL estándar con contraseña."""
+    resultado = url_sin_userinfo("redis://:s3cr3t@localhost:6379/0")
+    assert resultado == "redis://localhost:6379/0"
+
+
+def test_url_sin_userinfo_ipv6():
+    """Prueba de lógica pura: IPv6 con puerto personalizado."""
+    resultado = url_sin_userinfo("rediss://:s3cr3t@[::1]:6380/2")
+    assert resultado == "rediss://[::1]:6380/2"
+
+
+def test_url_sin_userinfo_sin_userinfo():
+    """Prueba de lógica pura: URL sin userinfo retorna None."""
+    resultado = url_sin_userinfo("redis://localhost:6379/0")
+    assert resultado is None
+
+
+# Tests que tocan Redis (se saltan si REDIS_REAL_URL no está definida)
+@pytest.mark.skipif(not URL, reason="define REDIS_REAL_URL para probar contra Redis real")
 def test_ping_y_estado_ok(real):
     assert real.estado() == "ok"
 
 
+@pytest.mark.skipif(not URL, reason="define REDIS_REAL_URL para probar contra Redis real")
 def test_revocacion_con_ttl_real(cleanup_jti):
     jti = "zz-test-" + uuid.uuid4().hex
     cleanup_jti.append(jti)
@@ -60,6 +118,7 @@ def test_revocacion_con_ttl_real(cleanup_jti):
     assert 1 <= redis_store.cliente().ttl("jwt:revoked:" + jti) <= 30
 
 
+@pytest.mark.skipif(not URL, reason="define REDIS_REAL_URL para probar contra Redis real")
 def test_sesion_y_refresh_con_ttl_real(cleanup_jti):
     jti = "zz-test-" + uuid.uuid4().hex
     cleanup_jti.append(jti)
@@ -71,6 +130,7 @@ def test_sesion_y_refresh_con_ttl_real(cleanup_jti):
     assert redis_store.obtener_sesion(jti) is None and redis_store.refresh_vigente(jti) is False
 
 
+@pytest.mark.skipif(not URL, reason="define REDIS_REAL_URL para probar contra Redis real")
 def test_politica_noeviction_configurada(real):
     try:
         politica = real.cliente().config_get("maxmemory-policy").get("maxmemory-policy")
@@ -79,27 +139,18 @@ def test_politica_noeviction_configurada(real):
     assert politica == "noeviction", f"el Redis de GCP usa {politica}; se recomienda noeviction"
 
 
+@pytest.mark.skipif(not URL, reason="define REDIS_REAL_URL para probar contra Redis real")
 def test_sin_contrasena_es_rechazado(real):
     parsed = urllib.parse.urlsplit(URL)
 
-    # Validar que la URL tiene userinfo (para una prueba significativa)
-    if not parsed.username:
-        pytest.skip("la URL no trae contraseña; un Redis sin requirepass es un hallazgo de seguridad")
-
-    # Construir URL sin contraseña (manteniendo scheme, host, port, db)
-    sin_pass = urllib.parse.urlunsplit((
-        parsed.scheme,
-        parsed.hostname if parsed.hostname else parsed.netloc.split("@")[-1],
-        parsed.path,
-        parsed.query,
-        parsed.fragment
-    ))
-    if parsed.port:
-        sin_pass = sin_pass.replace(f"://{parsed.hostname}", f"://{parsed.hostname}:{parsed.port}", 1)
+    # Guardar la URL sin userinfo; si retorna None, significa que la URL original no tiene contraseña
+    sin_pass = url_sin_userinfo(URL)
+    if sin_pass is None:
+        pytest.skip("la URL no trae contraseña")
 
     cliente = redis.Redis.from_url(sin_pass, socket_timeout=2, socket_connect_timeout=2)
     try:
-        resultado = cliente.ping()
+        cliente.ping()
         pytest.fail("Redis acepta conexiones sin contraseña")
     except redis.AuthenticationError:
         pass  # Esperado: autenticación rechazada
@@ -112,9 +163,7 @@ def test_sin_contrasena_es_rechazado(real):
         pytest.fail("Redis no es alcanzable")
     except redis.TimeoutError:
         pytest.fail("Timeout al conectar a Redis")
-    except redis.RedisError as e:
-        if isinstance(e, (redis.ConnectionError, redis.TimeoutError)):
-            pytest.fail("Redis no es alcanzable")
+    except redis.RedisError:
         raise  # Otro tipo de error
     finally:
         try:
@@ -123,6 +172,7 @@ def test_sin_contrasena_es_rechazado(real):
             pass
 
 
+@pytest.mark.skipif(not URL, reason="define REDIS_REAL_URL para probar contra Redis real")
 def test_url_enmascarada_no_filtra_la_contrasena(real):
     clave = urllib.parse.urlsplit(URL).password
     if not clave:
