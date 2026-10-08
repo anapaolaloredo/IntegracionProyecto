@@ -46,11 +46,10 @@ ADMIN_EMAIL="${ADMIN_EMAIL:-}"; ADMIN_PASS="${ADMIN_PASS:-}"
 [ -n "$ADMIN_PASS" ] || { read -rs -p "Contrasena del admin: " ADMIN_PASS; echo; }
 
 # ============================================================================
-seccion "0. SALUD Y METRICAS (publicos, sin JWT)"
+seccion "0. SALUD (publico, sin JWT)"
 for par in "login:$L" "books:$S" "users:$U" "authors:$A" "pedidos:$P" "pagos:$G"; do
   req "GET /health ${par%%:*}" "curl -i ${par#*:}/health" "${par#*:}/health"
 done
-req "GET /metrics (primeras lineas)" "curl -s $U/metrics | head -8" "$U/metrics"
 
 # ============================================================================
 seccion "1. LOGIN: registro, 2FA, sesion, extend, refresh"
@@ -234,5 +233,10 @@ req "Los endpoints publicos siguen funcionando sin sesion (login/register/catalo
 req "Limpieza: DELETE /api/libros/{isbn} (admin; 409 si tiene pedidos asociados)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $S/api/libros/$ISBN" -X DELETE -H "$AH" "$S/api/libros/$ISBN"
 req "Limpieza: DELETE /api/users/{id} del cliente de prueba" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $U/api/users/$ID_CLIENTE" -X DELETE -H "$AH" "$U/api/users/$ID_CLIENTE"
 req "POST /logout (admin)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$L/logout?format=json" -X POST -H "$AH" "$L/logout?format=json"
+
+seccion "9. METRICAS (despues del trafico: contadores de auth/revocaciones por servicio)"
+for par in "login:$L" "users:$U" "pedidos:$P"; do
+  req "GET /metrics ${par%%:*}" "curl -i ${par#*:}/metrics" "${par#*:}/metrics"
+done
 
 printf '\n\nFIN. Evidencias guardadas en %s\n' "$SALIDA"
