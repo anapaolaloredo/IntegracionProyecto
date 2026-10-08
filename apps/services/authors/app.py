@@ -15,8 +15,10 @@ import os  # noqa: E402
 from flask import Flask, jsonify  # noqa: E402
 
 import repository  # noqa: E402
+from common import db as common_db  # noqa: E402
 from common import jwt_auth  # noqa: E402
 from common.jwt_auth import ROLE_ADMIN, requiere_jwt  # noqa: E402
+from common.ops import registrar_operacion  # noqa: E402
 from common.web import Invalido, NoEncontrado, configurar_app, crear_swagger, cuerpo_json  # noqa: E402
 
 jwt_auth.obtener_secret()  # no arranca sin SECRET_KEY
@@ -24,6 +26,7 @@ jwt_auth.obtener_secret()  # no arranca sin SECRET_KEY
 app = Flask(__name__)
 configurar_app(app)
 crear_swagger(app, "Authors API")
+registrar_operacion(app, "authors", db_check=lambda: common_db.ping())
 
 solo_admin = requiere_jwt(roles=[ROLE_ADMIN])
 

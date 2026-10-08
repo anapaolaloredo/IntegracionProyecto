@@ -14,8 +14,9 @@ import os  # noqa: E402
 from flask import Flask, g, jsonify  # noqa: E402
 
 import repository  # noqa: E402
-from common import jwt_auth  # noqa: E402
+from common import db as common_db, jwt_auth, redis_store  # noqa: E402
 from common.jwt_auth import ROLE_ADMIN, requiere_jwt  # noqa: E402
+from common.ops import registrar_operacion  # noqa: E402
 from common.web import (Invalido, NoEncontrado, Prohibido, configurar_app,  # noqa: E402
                         crear_swagger, cuerpo_json)
 
@@ -24,6 +25,7 @@ jwt_auth.obtener_secret()  # no arranca sin SECRET_KEY
 app = Flask(__name__)
 configurar_app(app)
 crear_swagger(app, "Pedidos API")
+registrar_operacion(app, "pedidos", db_check=lambda: common_db.ping())
 
 
 def _es_admin():
@@ -84,6 +86,7 @@ def crear_pedido():
     """
     items = _parsear_lineas(cuerpo_json())
     id_pedido = repository.crear(g.user_id, items)
+    redis_store.cache_invalidar_libros()  # el stock cambio: el catalogo cacheado queda viejo
     return jsonify(repository.obtener(id_pedido)), 201
 
 
@@ -132,6 +135,8 @@ def cambiar_estado(id_pedido):
     if not isinstance(nuevo, str):
         raise Invalido("estado debe ser texto.")
     repository.cambiar_estado(id_pedido, nuevo, g.user_id, _es_admin())
+    if nuevo == "cancelado":
+        redis_store.cache_invalidar_libros()  # devuelve stock
     return jsonify({"id_pedido": id_pedido, "estado": nuevo})
 
 

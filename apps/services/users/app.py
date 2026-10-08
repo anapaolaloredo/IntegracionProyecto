@@ -17,8 +17,10 @@ from flask import Flask, g, jsonify, request  # noqa: E402
 from werkzeug.security import check_password_hash, generate_password_hash  # noqa: E402
 
 import repository  # noqa: E402
+from common import db as common_db  # noqa: E402
 from common import jwt_auth  # noqa: E402
 from common.jwt_auth import ROLE_ADMIN, ROLE_IDS, ROLE_NAMES, requiere_jwt  # noqa: E402
+from common.ops import registrar_operacion  # noqa: E402
 from common.web import (Invalido, NoEncontrado, Prohibido, configurar_app,  # noqa: E402
                         crear_swagger, cuerpo_json)
 
@@ -27,6 +29,7 @@ jwt_auth.obtener_secret()  # no arranca sin SECRET_KEY
 app = Flask(__name__)
 configurar_app(app)
 crear_swagger(app, "Users API")
+registrar_operacion(app, "users", db_check=lambda: common_db.ping())
 
 REGEX_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 CAMPOS_PERFIL = ("correo", "nombre", "apellido_paterno", "apellido_materno")
