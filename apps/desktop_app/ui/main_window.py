@@ -132,6 +132,7 @@ class MainWindow(QMainWindow):
         self.email = email
         self.invitado = token is None  # sin sesion: catalogo publico, sin escrituras
         self.restantes = None
+        self.crud_tabs = []  # pestanas CRUD de los microservicios (se llena al armar las pestanas)
         self.avisado = False
         self.salud_en_curso = False
         self.saliendo = False
@@ -228,8 +229,21 @@ class MainWindow(QMainWindow):
             self._intentar_refresh()
             return
         self.sesion.mostrar_datos(datos)
+        self._guardar_identidad(datos)
         self._set_restantes(datos.get("segundos_restantes"))
         poner_mensaje(self.sesion.mensaje, "Sesión válida en el servidor.")
+
+    def _guardar_identidad(self, datos):
+        """GET /session trae role_id e id_usuario: de ahi salen los permisos de las pestanas."""
+        if datos.get("role_id") is not None:
+            self.c.role_id = datos["role_id"]
+        if datos.get("id_usuario") is not None:
+            self.c.user_id = datos["id_usuario"]
+        self.refrescar_permisos()
+
+    def refrescar_permisos(self):
+        for pestana in self.crud_tabs:
+            pestana.refrescar_permisos()
 
     def _guardar_token(self, nuevo):
         self.token = nuevo
