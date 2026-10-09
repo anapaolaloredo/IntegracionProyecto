@@ -166,3 +166,90 @@ def test_admin_cambia_password_de_otro_sin_actual(ctrl, qapp):
     t.password.setText("resetClave12")
     t.btn_password.click()
     assert esperar(qapp, lambda: ("password", 7, "resetClave12", None) in ctrl.users.calls)
+
+
+# ----------------------------------------------------------------- Autores
+class FakeAuthors:
+    def __init__(self):
+        self.calls = []
+
+    def listar(self):
+        self.calls.append(("listar",))
+        return [{"id_autor": 2, "nombre_autor": "Borges"}]
+
+    def obtener(self, i):
+        self.calls.append(("obtener", i))
+        return {"id_autor": i, "nombre_autor": "Borges", "libros": [{"id_libro": 11, "titulo": "El aleph"}]}
+
+    def crear(self, n):
+        self.calls.append(("crear", n))
+        return {"id_autor": 3}
+
+    def renombrar(self, i, n):
+        self.calls.append(("renombrar", i, n))
+        return {}
+
+    def eliminar(self, i):
+        self.calls.append(("eliminar", i))
+        return {}
+
+    def vincular(self, a, lib):
+        self.calls.append(("vincular", a, lib))
+        return {}
+
+    def desvincular(self, a, lib):
+        self.calls.append(("desvincular", a, lib))
+        return {}
+
+
+class FakeLibros:
+    def listar(self):
+        from core.books_api import Libro
+        return [Libro("978", "El aleph", id_libro=11), Libro("979", "Sin id")]
+
+
+def _taba(c):
+    from ui.authors_tab import AuthorsTab
+    c.authors, c.libros = FakeAuthors(), FakeLibros()
+    return AuthorsTab(c)
+
+
+def test_invitado_puede_listar_autores(ctrl_invitado, qapp):
+    t = _taba(ctrl_invitado)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 1)
+    assert "Inicia sesión" not in t.mensaje.text()
+    assert not t.btn_crear.isEnabled()
+
+
+def test_seleccionar_autor_muestra_sus_libros(ctrl, qapp):
+    t = _taba(ctrl)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 1)
+    t.tabla.selectRow(0)
+    assert esperar(qapp, lambda: t.lista_libros.count() == 1)
+    assert t.nombre.text() == "Borges"
+
+
+def test_combo_ignora_libros_sin_id(ctrl, qapp):
+    t = _taba(ctrl)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.combo_libro.count() == 1)
+
+
+def test_vincular_envia_ids(ctrl, qapp):
+    t = _taba(ctrl)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 1 and t.combo_libro.count() == 1)
+    t.tabla.selectRow(0)
+    assert esperar(qapp, lambda: t.lista_libros.count() == 1)
+    t.btn_vincular.click()
+    assert esperar(qapp, lambda: ("vincular", 2, 11) in ctrl.authors.calls)
+
+
+def test_nombre_vacio_o_largo_no_llama_a_la_red(ctrl, qapp):
+    t = _taba(ctrl)
+    t.btn_crear.click()
+    t.nombre.setText("x" * 151)
+    t.btn_crear.click()
+    assert not [c for c in ctrl.authors.calls if c[0] == "crear"]
