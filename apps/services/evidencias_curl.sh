@@ -7,7 +7,7 @@
 # Uso (en la instancia, con los 6 servicios arriba):
 #   cd apps/services && ./evidencias_curl.sh
 # Variables opcionales: HOST (localhost), ADMIN_EMAIL, ADMIN_PASS.
-# Pide por teclado los codigos 2FA (se leen del buzon: `mail`).
+# Pide UN solo codigo 2FA, el del admin (se lee del buzon: `mail`, correo mas reciente).
 set -u
 cd "$(dirname "$0")"
 HOST="${HOST:-localhost}"
@@ -56,6 +56,7 @@ seccion "1. LOGIN: registro, 2FA, sesion, extend, refresh"
 req "POST /register (cliente nuevo)" "curl -i -X POST $L/register?format=json -H '$JSON' -d '{...}'" \
   -X POST "$L/register?format=json" -H "$JSON" \
   -d "{\"nombre\":\"Cliente\",\"apellido_paterno\":\"Prueba\",\"apellido_materno\":\"Evidencia\",\"email\":\"$C_EMAIL\",\"password\":\"$C_PASS\"}"
+ID_CLIENTE=$(json "['id_usuario']")
 req "POST /register con correo repetido (409)" "curl -i -X POST $L/register?format=json ..." \
   -X POST "$L/register?format=json" -H "$JSON" \
   -d "{\"nombre\":\"Cliente\",\"apellido_paterno\":\"Prueba\",\"apellido_materno\":\"Evidencia\",\"email\":\"$C_EMAIL\",\"password\":\"$C_PASS\"}"
@@ -71,21 +72,29 @@ login_2fa() {  # $1=email $2=pass $3=nombre -> deja ACCESS y REFRESH
     -X POST "$L/login/verify?format=json" -H "$JSON" -d "{\"email\":\"$1\",\"codigo\":\"$CODIGO\"}"
   ACCESS=$(json "['session_token']"); REFRESH=$(json "['refresh_token']")
 }
-login_2fa "$C_EMAIL" "$C_PASS" "cliente";  CLIENTE="$ACCESS"; REFRESH_CLIENTE="$REFRESH"
 login_2fa "$ADMIN_EMAIL" "$ADMIN_PASS" "admin"; ADMIN="$ACCESS"; REFRESH_ADMIN="$REFRESH"
-[ -n "$ADMIN" ] && [ -n "$CLIENTE" ] || { echo "ERROR: no se obtuvieron los dos tokens; revisa los codigos."; exit 1; }
-AH="Authorization: Bearer $ADMIN"; CH="Authorization: Bearer $CLIENTE"
+[ -n "$ADMIN" ] || { echo "ERROR: no se obtuvo el token del admin; el codigo 2FA es el del correo NUEVO de $ADMIN_EMAIL."; exit 1; }
+AH="Authorization: Bearer $ADMIN"
 
-req "GET /session (token valido)" 'curl -i -H "Authorization: Bearer $CLIENTE" '"$L/session?format=json" -H "$CH" "$L/session?format=json"
+# Solo el admin pasa por el 2FA. Para las pruebas de rol 'cliente' se firma un JWT de
+# acceso (role_id=2, 30 min) del cliente registrado arriba con la clave compartida del .env.
+SECRETO=$(grep -E '^(JWT_SECRET_KEY|SECRET_KEY)=' users/.env | head -1 | cut -d= -f2-)
+CLIENTE=$(JWT_SECRET_KEY="$SECRETO" PYTHONPATH=. "$PY" -c "import sys;from common.jwt_auth import crear_token;print(crear_token(int(sys.argv[1]),2,'access',1800))" "$ID_CLIENTE")
+unset SECRETO
+CH="Authorization: Bearer $CLIENTE"
+echo
+echo "(JWT de cliente id=$ID_CLIENTE, role_id=2, firmado localmente con la clave compartida: se usa solo para las pruebas de rol/propiedad; el 2FA real se hizo con el admin)"
+
+req "GET /session (token valido)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$L/session?format=json" -H "$AH" "$L/session?format=json"
 req "GET /session sin token (401)" "curl -i $L/session?format=json" "$L/session?format=json"
-req "POST /session/extend (emite token nuevo y revoca el anterior)" 'curl -i -X POST -H "Authorization: Bearer $CLIENTE" '"$L/session/extend?format=json" -X POST -H "$CH" "$L/session/extend?format=json"
-NUEVO=$(json "['session_token']"); [ -n "$NUEVO" ] && { VIEJO="$CLIENTE"; CLIENTE="$NUEVO"; CH="Authorization: Bearer $CLIENTE"; }
-req "El token anterior ya no sirve tras extend (401 revocado)" 'curl -i -H "Authorization: Bearer $CLIENTE_VIEJO" '"$L/session?format=json" -H "Authorization: Bearer ${VIEJO:-x}" "$L/session?format=json"
-req "POST /session/refresh (refresh token -> acceso nuevo)" "curl -i -X POST $L/session/refresh?format=json -H '$JSON' -d '{\"refresh_token\":\"\$REFRESH_CLIENTE\"}'" \
-  -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$REFRESH_CLIENTE\"}"
-NUEVO=$(json "['session_token']"); [ -n "$NUEVO" ] && { CLIENTE="$NUEVO"; CH="Authorization: Bearer $CLIENTE"; }
-req "Un token de acceso NO sirve como refresh (401)" "curl -i -X POST $L/session/refresh?format=json -d '{\"refresh_token\":\"\$CLIENTE\"}'" \
-  -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$CLIENTE\"}"
+req "POST /session/extend (emite token nuevo y revoca el anterior)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$L/session/extend?format=json" -X POST -H "$AH" "$L/session/extend?format=json"
+NUEVO=$(json "['session_token']"); [ -n "$NUEVO" ] && { VIEJO="$ADMIN"; ADMIN="$NUEVO"; AH="Authorization: Bearer $ADMIN"; }
+req "El token anterior ya no sirve tras extend (401 revocado)" 'curl -i -H "Authorization: Bearer $ADMIN_VIEJO" '"$L/session?format=json" -H "Authorization: Bearer ${VIEJO:-x}" "$L/session?format=json"
+req "POST /session/refresh (refresh token -> acceso nuevo)" "curl -i -X POST $L/session/refresh?format=json -H '$JSON' -d '{\"refresh_token\":\"\$REFRESH_ADMIN\"}'" \
+  -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$REFRESH_ADMIN\"}"
+NUEVO=$(json "['session_token']"); [ -n "$NUEVO" ] && { ADMIN="$NUEVO"; AH="Authorization: Bearer $ADMIN"; }
+req "Un token de acceso NO sirve como refresh (401)" "curl -i -X POST $L/session/refresh?format=json -d '{\"refresh_token\":\"\$ADMIN\"}'" \
+  -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$ADMIN\"}"
 
 # ============================================================================
 seccion "2. USERS (5002)"
@@ -220,20 +229,19 @@ req "CORS preflight (OPTIONS) desde un cliente web" "curl -i -X OPTIONS -H 'Orig
   -X OPTIONS -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: authorization,content-type" "$U/api/users"
 
 # ============================================================================
-seccion "8. LOGOUT: revocacion en Redis visible en TODOS los servicios"
-req "POST /logout (cliente): borra sesion+refresh y revoca el JWT" 'curl -i -X POST -H "Authorization: Bearer $CLIENTE" '"$L/logout?format=json" -X POST -H "$CH" "$L/logout?format=json"
-req "El mismo token ya no sirve en users (401)" 'curl -i -H "Authorization: Bearer $CLIENTE" '"$U/api/users/$ID_CLIENTE" -H "$CH" "$U/api/users/$ID_CLIENTE"
-req "... ni en pedidos (401)" 'curl -i -H "Authorization: Bearer $CLIENTE" '"$P/api/pedidos" -H "$CH" "$P/api/pedidos"
-req "... ni en pagos (401)" 'curl -i -H "Authorization: Bearer $CLIENTE" '"$G/api/pagos" -H "$CH" "$G/api/pagos"
-req "... ni en login /session (401)" 'curl -i -H "Authorization: Bearer $CLIENTE" '"$L/session?format=json" -H "$CH" "$L/session?format=json"
-req "El refresh token del cliente tambien quedo invalidado (401)" "curl -i -X POST $L/session/refresh?format=json -d '{\"refresh_token\":\"\$REFRESH_CLIENTE\"}'" \
-  -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$REFRESH_CLIENTE\"}"
-req "Los endpoints publicos siguen funcionando sin sesion (login/register/catalogo)" "curl -i $S/api/libros/$ISBN" "$S/api/libros/$ISBN"
-
-# limpieza de los datos de prueba
+seccion "8. LIMPIEZA y LOGOUT: revocacion en Redis visible en TODOS los servicios"
 req "Limpieza: DELETE /api/libros/{isbn} (admin; 409 si tiene pedidos asociados)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $S/api/libros/$ISBN" -X DELETE -H "$AH" "$S/api/libros/$ISBN"
 req "Limpieza: DELETE /api/users/{id} del cliente de prueba" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $U/api/users/$ID_CLIENTE" -X DELETE -H "$AH" "$U/api/users/$ID_CLIENTE"
-req "POST /logout (admin)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$L/logout?format=json" -X POST -H "$AH" "$L/logout?format=json"
+req "POST /logout (admin): borra sesion+refresh en Redis y revoca el JWT" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$L/logout?format=json" -X POST -H "$AH" "$L/logout?format=json"
+req "El mismo token ya no sirve en users (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$U/api/users" -H "$AH" "$U/api/users"
+req "... ni en authors al escribir (401)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$A/api/authors" -X POST -H "$AH" -H "$JSON" -d '{"nombre_autor":"X"}' "$A/api/authors"
+req "... ni en pedidos (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$P/api/pedidos" -H "$AH" "$P/api/pedidos"
+req "... ni en pagos (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$G/api/pagos" -H "$AH" "$G/api/pagos"
+req "... ni en soap al crear libros (401)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$S/api/libros" -X POST -H "$AH" -H "$JSON" -d '{}' "$S/api/libros"
+req "... ni en login /session (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$L/session?format=json" -H "$AH" "$L/session?format=json"
+req "El refresh token del admin tambien quedo invalidado (401)" "curl -i -X POST $L/session/refresh?format=json -d '{\"refresh_token\":\"\$REFRESH_ADMIN\"}'" \
+  -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$REFRESH_ADMIN\"}"
+req "Los endpoints publicos siguen funcionando sin sesion (catalogo, roles, autores, health)" "curl -i $A/api/authors" "$A/api/authors"
 
 seccion "9. METRICAS (despues del trafico: contadores de auth/revocaciones por servicio)"
 for par in "login:$L" "users:$U" "pedidos:$P"; do
