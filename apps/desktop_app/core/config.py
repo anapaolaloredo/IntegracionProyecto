@@ -11,11 +11,22 @@ import os
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from dataclasses import replace
+from urllib.parse import urlparse, urlsplit, urlunsplit
+
+# (clave, nombre legible, puerto por defecto) de los seis microservicios
+SERVICIOS = (
+    ("login", "Login", 5000),
+    ("books", "Libros", 5001),
+    ("users", "Usuarios", 5002),
+    ("authors", "Autores", 5003),
+    ("pedidos", "Pedidos", 5004),
+    ("pagos", "Pagos", 5005),
+)
 
 DEFAULTS = {
-    "login_url": "http://localhost:5000",
-    "books_url": "http://localhost:5001",
+    **{f"{clave}_url": f"http://localhost:{puerto}" for clave, _, puerto in SERVICIOS},
+    "protocolo": "http",
     "timeout": 5,
     "health_interval": 30,
 }
@@ -39,6 +50,12 @@ def normalizar_url(url):
     return (url or "").strip().rstrip("/")
 
 
+def cambiar_esquema(url, esquema):
+    """'http://h:5002' + 'https' -> 'https://h:5002' (host, puerto y ruta intactos)."""
+    partes = urlsplit(url)
+    return urlunsplit((esquema, partes.netloc, partes.path, partes.query, partes.fragment))
+
+
 def validar_url(url):
     """Regresa un mensaje de error o None si la URL base es usable."""
     partes = urlparse(url)
@@ -57,6 +74,11 @@ def validar_url(url):
 class AppConfig:
     login_url: str = DEFAULTS["login_url"]
     books_url: str = DEFAULTS["books_url"]
+    users_url: str = DEFAULTS["users_url"]
+    authors_url: str = DEFAULTS["authors_url"]
+    pedidos_url: str = DEFAULTS["pedidos_url"]
+    pagos_url: str = DEFAULTS["pagos_url"]
+    protocolo: str = DEFAULTS["protocolo"]
     timeout: int = DEFAULTS["timeout"]
     health_interval: int = DEFAULTS["health_interval"]
 
@@ -80,13 +102,23 @@ class AppConfig:
             return cls.defaults()
         return config
 
+    def url(self, clave):
+        return getattr(self, f"{clave}_url")
+
+    def con_protocolo(self, protocolo):
+        """Copia con el esquema de las seis URLs reescrito (host y puerto intactos)."""
+        nuevas = {f"{clave}_url": cambiar_esquema(self.url(clave), protocolo) for clave, _, _ in SERVICIOS}
+        return replace(self, protocolo=protocolo, **nuevas)
+
     def validar(self):
         """Lista de errores legibles; vacia si la configuracion es valida."""
         errores = []
-        for nombre, url in (("Login", self.login_url), ("Libros", self.books_url)):
-            error = validar_url(url)
+        for clave, nombre, _ in SERVICIOS:
+            error = validar_url(self.url(clave))
             if error:
                 errores.append(f"URL de {nombre}: {error}.")
+        if self.protocolo not in ("http", "https"):
+            errores.append("El protocolo debe ser http o https.")
         if not isinstance(self.timeout, int) or not 1 <= self.timeout <= 60:
             errores.append("El tiempo de espera debe estar entre 1 y 60 segundos.")
         if not isinstance(self.health_interval, int) or not 5 <= self.health_interval <= 3600:
