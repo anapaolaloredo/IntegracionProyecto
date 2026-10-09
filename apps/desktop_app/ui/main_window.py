@@ -5,17 +5,22 @@ HTTP. Aqui viven los temporizadores de salud y de expiracion de sesion."""
 from datetime import datetime, timedelta
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import (QDockWidget, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QMainWindow,
-                               QPushButton, QTabWidget, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QDockWidget, QFormLayout, QGridLayout, QGroupBox, QHBoxLayout, QLabel,
+                               QMainWindow, QPushButton, QTabWidget, QVBoxLayout, QWidget)
 
 from core import session_store
-from core.health import comprobar_libros, comprobar_login
+from core.config import SERVICIOS
+from core.health import CAIDO, DEGRADADO, OK, comprobar_servicio
 from core.http import SesionExpirada, log_terminal
 from ui.admin_tab import AdminTab
 from ui.async_task import ejecutar
+from ui.authors_tab import AuthorsTab
 from ui.catalog_tab import CatalogTab
 from ui.common import TEXTOS, RegistroHttpWidget, Semaforo, poner_mensaje, texto_error
 from ui.config_panel import ConfigPanel
+from ui.pagos_tab import PagosTab
+from ui.pedidos_tab import PedidosTab
+from ui.users_tab import UsersTab
 
 AVISO_SEGUNDOS = 5 * 60  # advertir cuando falten 5 minutos o menos
 
@@ -82,6 +87,7 @@ class TarjetaEstado(QGroupBox):
         self.estado = QLabel("Sin comprobar")
         self.estado.setStyleSheet("font-size: 16px; font-weight: bold;")
         self.detalle = QLabel(wordWrap=True)
+        self.redis = QLabel("Redis: —")
         self.hora = QLabel("Última comprobación: —")
         self.hora.setStyleSheet("color: gray;")
         arriba = QHBoxLayout()
@@ -90,38 +96,62 @@ class TarjetaEstado(QGroupBox):
         capa = QVBoxLayout(self)
         capa.addLayout(arriba)
         capa.addWidget(self.detalle)
+        capa.addWidget(self.redis)
         capa.addWidget(self.hora)
 
     def mostrar(self, resultado, url):
         self.semaforo.set_estado(resultado.estado)
         self.estado.setText(TEXTOS[resultado.estado])
         self.detalle.setText(f"{resultado.detalle}\n{url}")
+        self.redis.setText(f"Redis: {resultado.redis}" if resultado.redis else "Redis: —")
+        self.redis.setStyleSheet({"ok": "color: #2e7d32;", "error": "color: #c62828;"}.get(resultado.redis, "color: gray;"))
         self.hora.setText("Última comprobación: " + resultado.comprobado.strftime("%d/%m/%Y %H:%M:%S"))
 
 
 class StatusTab(QWidget):
     def __init__(self, ventana):
         super().__init__()
-        self.login = TarjetaEstado("Microservicio de Login")
-        self.libros = TarjetaEstado("Microservicio de Libros")
+        self.tarjetas = {clave: TarjetaEstado(f"Microservicio de {nombre}") for clave, nombre, _ in SERVICIOS}
         self.btn = QPushButton("Comprobar ahora")
         self.btn.clicked.connect(ventana.comprobar_salud)
         self.intervalo = QLabel()
         self.intervalo.setStyleSheet("color: gray;")
+        self.sem_redis = Semaforo(22)
+        self.txt_redis = QLabel("Redis compartido: sin comprobar")
+        self.txt_redis.setStyleSheet("font-weight: bold;")
+        fila_redis = QHBoxLayout()
+        fila_redis.addWidget(self.sem_redis)
+        fila_redis.addWidget(self.txt_redis, 1)
         leyenda = QLabel("🟢 funcionando con base de datos    🟡 responde pero degradado / BD no disponible    "
                          "🔴 inaccesible, error de conexión o sin respuesta")
         leyenda.setWordWrap(True)
-        tarjetas = QHBoxLayout()
-        tarjetas.addWidget(self.login)
-        tarjetas.addWidget(self.libros)
+        rejilla = QGridLayout()
+        for n, clave in enumerate(self.tarjetas):
+            rejilla.addWidget(self.tarjetas[clave], n // 3, n % 3)
         barra = QHBoxLayout()
         barra.addWidget(self.btn)
         barra.addWidget(self.intervalo, 1)
         capa = QVBoxLayout(self)
-        capa.addLayout(tarjetas)
+        capa.addLayout(rejilla)
+        capa.addLayout(fila_redis)
         capa.addLayout(barra)
         capa.addWidget(leyenda)
         capa.addStretch()
+
+    def resumen_redis(self, resultados):
+        """Verde si todos los servicios que responden ven Redis; amarillo si alguno no; gris si ninguno responde."""
+        vistos = [r.redis for r in resultados.values() if r.redis]
+        if not vistos:
+            self.sem_redis.set_estado(None)
+            self.txt_redis.setText("Redis compartido: sin datos (ningún servicio respondió)")
+        elif all(v == "ok" for v in vistos):
+            self.sem_redis.set_estado(OK)
+            self.txt_redis.setText(f"Redis compartido: funcionando ({len(vistos)} servicio(s) lo ven)")
+        else:
+            self.sem_redis.set_estado(DEGRADADO)
+            fallan = sum(1 for v in vistos if v != "ok")
+            self.txt_redis.setText(f"Redis compartido: {fallan} servicio(s) no lo alcanzan — "
+                                   "las sesiones, la revocación y la autorización fallan de forma segura (503)")
 
 
 class MainWindow(QMainWindow):
@@ -132,6 +162,7 @@ class MainWindow(QMainWindow):
         self.email = email
         self.invitado = token is None  # sin sesion: catalogo publico, sin escrituras
         self.restantes = None
+        self.crud_tabs = []  # pestanas CRUD de los microservicios (se llena al armar las pestanas)
         self.avisado = False
         self.salud_en_curso = False
         self.saliendo = False
@@ -152,17 +183,29 @@ class MainWindow(QMainWindow):
         self.sesion = SessionTab(self)
         self.catalogo = CatalogTab(controlador)
         self.admin = AdminTab(controlador)
+        self.users = UsersTab(controlador)
+        self.authors = AuthorsTab(controlador)
+        self.pedidos = PedidosTab(controlador)
+        self.pagos = PagosTab(controlador)
+        self.crud_tabs = [self.users, self.authors, self.pedidos, self.pagos]
         self.estado = StatusTab(self)
         self.config = ConfigPanel(controlador.config, controlador.registro.entrada.emit)
         self.tabs = QTabWidget()
         self.tabs.addTab(self.catalogo, "Catálogo de libros")
         self.tabs.addTab(self.admin, "Administración de libros")
+        self.tabs.addTab(self.users, "Usuarios")
+        self.tabs.addTab(self.authors, "Autores")
+        self.tabs.addTab(self.pedidos, "Pedidos")
+        self.tabs.addTab(self.pagos, "Pagos")
         self.tabs.addTab(self.sesion, "Sesión y perfil")
         self.tabs.addTab(self.estado, "Estado de los servicios")
         self.tabs.addTab(self.config, "Configuración del servidor")
         self._modo_sesion()
         self.catalogo.editar.connect(self._editar_en_admin)
         self.admin.catalogo_cambio.connect(self.catalogo.recargar)
+        self.pedidos.pedido_cambio.connect(self.catalogo.recargar)  # el stock cambia con cada pedido
+        self.pedidos.pedido_cambio.connect(self.pagos.recargar)
+        self.pagos.pago_cambio.connect(self.pedidos.recargar)
         self.config.guardada.connect(self._config_guardada)
 
         centro = QWidget()
@@ -180,11 +223,12 @@ class MainWindow(QMainWindow):
         self.resizeDocks([dock], [170], Qt.Vertical)
 
         # Barra de estado: mini semaforos + tiempo de sesion
-        self.sb_login, self.sb_libros = Semaforo(), Semaforo()
+        self.sb = {clave: Semaforo() for clave, _, _ in SERVICIOS}
         self.sb_sesion = QLabel()
         barra = self.statusBar()
-        for w in (self.sb_login, QLabel("Login"), self.sb_libros, QLabel("Libros")):
-            barra.addWidget(w)
+        for clave, nombre, _ in SERVICIOS:
+            barra.addWidget(self.sb[clave])
+            barra.addWidget(QLabel(nombre))
         barra.addPermanentWidget(self.sb_sesion)
 
         self.reloj = QTimer(self, interval=1000, timeout=self._tic)
@@ -192,6 +236,7 @@ class MainWindow(QMainWindow):
         self._aplicar_intervalo()
         self.reloj.start()
 
+        self.refrescar_permisos()
         self.sincronizar_sesion()
         self.comprobar_salud()
         self.catalogo.ver_todo()
@@ -228,8 +273,21 @@ class MainWindow(QMainWindow):
             self._intentar_refresh()
             return
         self.sesion.mostrar_datos(datos)
+        self._guardar_identidad(datos)
         self._set_restantes(datos.get("segundos_restantes"))
         poner_mensaje(self.sesion.mensaje, "Sesión válida en el servidor.")
+
+    def _guardar_identidad(self, datos):
+        """GET /session trae role_id e id_usuario: de ahi salen los permisos de las pestanas."""
+        if datos.get("role_id") is not None:
+            self.c.role_id = datos["role_id"]
+        if datos.get("id_usuario") is not None:
+            self.c.user_id = datos["id_usuario"]
+        self.refrescar_permisos()
+
+    def refrescar_permisos(self):
+        for pestana in self.crud_tabs:
+            pestana.refrescar_permisos()
 
     def _guardar_token(self, nuevo):
         self.token = nuevo
@@ -251,8 +309,16 @@ class MainWindow(QMainWindow):
             self._set_restantes(datos.get("segundos_restantes"))
             poner_mensaje(self.sesion.mensaje, "Sesión renovada automáticamente.")
 
-        ejecutar(lambda: self.c.auth.refrescar(refresh), ok,
-                 lambda exc: self.cerrar_sesion(motivo=motivo, avisar_servidor=False))
+        def fallo(exc):
+            # Solo un rechazo real del servidor (401/403) cierra la sesion; sin red o con Redis
+            # caido (503) se conserva y se reintenta en el siguiente ciclo.
+            if isinstance(exc, SesionExpirada) or getattr(exc, "status", None) in (401, 403):
+                self.cerrar_sesion(motivo=motivo, avisar_servidor=False)
+            else:
+                poner_mensaje(self.sesion.mensaje, "No se pudo renovar la sesión (servicio no disponible). "
+                              "Se reintentará. " + texto_error(exc), error=True)
+
+        ejecutar(lambda: self.c.auth.refrescar(refresh), ok, fallo)
 
     def renovar_token(self, ok, fallo):
         """Intenta renovar el JWT con el refresh token (una vez). Llama ok() o fallo()."""
@@ -309,6 +375,10 @@ class MainWindow(QMainWindow):
         self.banner_texto.setText(f"⚠️  Tu sesión expira en {texto}. Extiéndela para no perder el acceso.")
 
     def _vista_cambio(self, indice):
+        pestana = self.tabs.widget(indice)
+        if pestana in self.crud_tabs:
+            pestana.refrescar_permisos()
+            pestana.al_activar()
         log_terminal("UI", f"vista -> {self.tabs.tabText(indice)}  |  token en uso: "
                               f"{'(invitado, sin token)' if self.invitado else 'Bearer ' + self.token}")
 
@@ -363,18 +433,19 @@ class MainWindow(QMainWindow):
             return
         self.salud_en_curso = True
         self.estado.btn.setEnabled(False)
-        http_login, http_libros = self.c.http_login, self.c.http_libros
-        ejecutar(lambda: (comprobar_login(http_login), comprobar_libros(http_libros)),
+        clientes = {"login": self.c.http_login, "books": self.c.http_libros, "users": self.c.http_users,
+                    "authors": self.c.http_authors, "pedidos": self.c.http_pedidos, "pagos": self.c.http_pagos}
+        nombres = {clave: nombre for clave, nombre, _ in SERVICIOS}
+        ejecutar(lambda: {clave: comprobar_servicio(http, nombres[clave]) for clave, http in clientes.items()},
                  self._salud_ok, self._salud_error)
 
     def _salud_ok(self, resultados):
         self.salud_en_curso = False
         self.estado.btn.setEnabled(True)
-        login, libros = resultados
-        self.estado.login.mostrar(login, self.c.config.login_url)
-        self.estado.libros.mostrar(libros, self.c.config.books_url)
-        self.sb_login.set_estado(login.estado)
-        self.sb_libros.set_estado(libros.estado)
+        for clave, resultado in resultados.items():
+            self.estado.tarjetas[clave].mostrar(resultado, self.c.config.url(clave))
+            self.sb[clave].set_estado(resultado.estado)
+        self.estado.resumen_redis(resultados)
 
     def _salud_error(self, exc):
         self.salud_en_curso = False
@@ -392,6 +463,9 @@ class MainWindow(QMainWindow):
         self.comprobar_salud()
         self.sincronizar_sesion()
         self.catalogo.recargar()
+        actual = self.tabs.currentWidget()
+        if actual in self.crud_tabs:
+            actual.al_activar()
 
     def closeEvent(self, evento):
         self.reloj.stop()

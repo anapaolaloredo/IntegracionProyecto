@@ -205,3 +205,18 @@ def test_refrescar_con_refresh_invalido_lanza_service_error():
     with pytest.raises(ServiceError) as exc:
         AuthApi(Http()).refrescar("malo")
     assert not isinstance(exc.value, SesionExpirada)
+
+
+def test_parsea_id_libro_si_viene():
+    xml = b"<library><book isbn='1' id_libro='11'><title>T</title><authors/><publicationYear/><genres/>" \
+          b"<price currency='MXN'>1</price><stock>1</stock><format>F</format><images/><concepts/></book></library>"
+    assert parsear_libros(xml)[0].id_libro == 11
+
+
+def test_id_libro_ausente_es_none():
+    assert parsear_libros(XML)[0].id_libro is None
+
+
+def test_payload_no_incluye_id_libro():
+    libro = Libro("9", "T", id_libro=5)
+    assert "id_libro" not in libro.a_payload()

@@ -73,6 +73,7 @@ registrar_operacion(app, "books", db_check=lambda: _db_ok())  # GET /health y GE
 # json_agg(...) ya devuelve JSON: psycopg2 lo castea a list/dict de Python.
 BOOK_QUERY = """
     SELECT
+        l.id_libro AS id_libro,
         l.isbn,
         l.titulo AS title,
         l.anio_publicacion AS "publicationYear",
@@ -147,7 +148,10 @@ def fetch_book_topics(where_clause="", params=None):
 
 def book_to_element(book):
     """Convierte un libro (dict) al mismo diseño XML que library.xml."""
-    book_el = ET.Element("book", isbn=book["isbn"])
+    atributos = {"isbn": book["isbn"]}
+    if book.get("id_libro") is not None:
+        atributos["id_libro"] = str(book["id_libro"])
+    book_el = ET.Element("book", **atributos)
     ET.SubElement(book_el, "title").text = book["title"]
 
     authors_el = ET.SubElement(book_el, "authors")

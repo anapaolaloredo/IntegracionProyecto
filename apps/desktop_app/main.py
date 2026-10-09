@@ -16,6 +16,7 @@ from core.auth_api import AuthApi
 from core.books_api import BooksApi
 from core.config import AppConfig
 from core.http import HttpClient
+from core.rest_api import AuthorsApi, PagosApi, PedidosApi, UsersApi
 from ui.common import RegistroHttp, poner_mensaje, texto_error
 from ui.login_window import LoginWindow
 from ui.main_window import MainWindow
@@ -30,17 +31,31 @@ class Controlador:
         self.registro = RegistroHttp()
         self.ventana = None
         self.token_sesion = None
+        self.role_id = None   # 1 = admin, 2 = cliente; los llena GET /session
+        self.user_id = None
         self._construir_clientes()
+
+    def es_admin(self):
+        return self.role_id == 1
 
     def _construir_clientes(self):
         log = self.registro.entrada.emit
         self.http_login = HttpClient("Login", self.config.login_url, self.config.timeout, log)
         self.http_libros = HttpClient("Libros", self.config.books_url, self.config.timeout, log)
+        self.http_users = HttpClient("Usuarios", self.config.users_url, self.config.timeout, log)
+        self.http_authors = HttpClient("Autores", self.config.authors_url, self.config.timeout, log)
+        self.http_pedidos = HttpClient("Pedidos", self.config.pedidos_url, self.config.timeout, log)
+        self.http_pagos = HttpClient("Pagos", self.config.pagos_url, self.config.timeout, log)
         anterior = getattr(self, "auth", None)
         self.auth = AuthApi(self.http_login)
         if anterior is not None:
             self.auth.refresh_token = anterior.refresh_token  # guardar config no debe perder el refresh
-        self.libros = BooksApi(self.http_libros, lambda: self.token_sesion)
+        token = lambda: self.token_sesion  # noqa: E731 - se consulta en cada llamada
+        self.libros = BooksApi(self.http_libros, token)
+        self.users = UsersApi(self.http_users, token)
+        self.authors = AuthorsApi(self.http_authors, token)
+        self.pedidos = PedidosApi(self.http_pedidos, token)
+        self.pagos = PagosApi(self.http_pagos, token)
 
     def aplicar_config(self, config):
         self.config = config
@@ -72,6 +87,7 @@ class Controlador:
     def mostrar_invitado(self, mensaje=None, error=True):
         """Ventana principal sin sesion: solo lecturas publicas."""
         self.token_sesion = None
+        self.role_id = self.user_id = None
         self._cambiar_ventana(MainWindow(self, None, None))
         if mensaje:
             poner_mensaje(self.ventana.sesion.mensaje, mensaje, error=error)
@@ -81,6 +97,7 @@ class Controlador:
 
     def sesion_iniciada(self, token, email):
         self.token_sesion = token
+        self.role_id = self.user_id = None  # se conocen al validar la sesion (GET /session)
         try:
             session_store.guardar(token, email, self.auth.refresh_token)
         except OSError:

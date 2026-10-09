@@ -38,6 +38,7 @@ class Libro:
     formato: str = ""
     imagenes: list = field(default_factory=list)
     conceptos: list = field(default_factory=list)  # [(nombre, definicion)]
+    id_libro: int | None = None  # lo expone el catalogo; lo usan Pedidos y Autores
 
     def a_payload(self):
         """Representacion completa que se envia en POST y PUT."""
@@ -88,6 +89,7 @@ def parsear_libros(xml_bytes):
             formato=_texto(b, "format"),
             imagenes=imagenes,
             conceptos=[(c.get("name", ""), _texto(c, "definition")) for c in b.findall("concepts/concept")],
+            id_libro=int(b.get("id_libro")) if (b.get("id_libro") or "").isdigit() else None,
         ))
     return libros
 

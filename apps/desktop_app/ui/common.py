@@ -13,6 +13,7 @@ from core.http import ServiceError
 
 COLORES = {OK: "#2e7d32", DEGRADADO: "#f9a825", CAIDO: "#c62828", None: "#9e9e9e"}
 TEXTOS = {OK: "Funcionando", DEGRADADO: "Degradado", CAIDO: "Sin conexión", None: "Sin comprobar"}
+CAMPOS_SECRETOS = ("password", "password_actual", "password_nueva")
 ESTILO_ERROR = "color: #c62828;"
 ESTILO_OK = "color: #2e7d32;"
 
@@ -76,8 +77,9 @@ class RegistroHttpWidget(QWidget):
         resultado = f"→ {e['status']}" if e.get("status") else f"→ SIN RESPUESTA: {e.get('error')}"
         lineas = [f"{hora}  [{e['servicio']}]  {e['metodo']} {url}  {resultado}  ({e['ms']} ms)"]
         if e.get("body") is not None:
-            cuerpo = json.dumps(e["body"], ensure_ascii=False)
-            if "password" in e["body"]:
-                cuerpo = json.dumps({**e["body"], "password": "********"}, ensure_ascii=False)
+            body = e["body"]
+            if isinstance(body, dict):
+                body = {k: ("********" if k in CAMPOS_SECRETOS else v) for k, v in body.items()}
+            cuerpo = json.dumps(body, ensure_ascii=False)
             lineas.append("          cuerpo enviado: " + (cuerpo if len(cuerpo) < 700 else cuerpo[:700] + "…"))
         self.texto.appendPlainText("\n".join(lineas))
