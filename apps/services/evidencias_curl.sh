@@ -65,6 +65,7 @@ req "POST /login con contrasena incorrecta (401)" "curl -i -X POST $L/login?form
 login_2fa() {  # $1=email $2=pass $3=nombre -> deja ACCESS y REFRESH
   req "POST /login ($3): envia el codigo 2FA" "curl -i -X POST $L/login?format=json -H '$JSON' -d '{\"email\":\"$1\",\"password\":\"***\"}'" \
     -X POST "$L/login?format=json" -H "$JSON" -d "{\"email\":\"$1\",\"password\":\"$2\"}"
+  cuerpo | grep -q '"pendiente_verificacion":true' || { echo "ERROR: el login de $1 fue rechazado (credenciales invalidas), no se envio ningun codigo 2FA. Revisa correo y contrasena."; exit 1; }
   read -r -p ">> Codigo 2FA de $1 (lee el buzon con: mail): " CODIGO
   req "POST /login/verify ($3): emite JWT de acceso (30 min) y refresh (7 dias)" "curl -i -X POST $L/login/verify?format=json -H '$JSON' -d '{\"email\":\"$1\",\"codigo\":\"******\"}'" \
     -X POST "$L/login/verify?format=json" -H "$JSON" -d "{\"email\":\"$1\",\"codigo\":\"$CODIGO\"}"
