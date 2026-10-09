@@ -68,3 +68,101 @@ def test_invitado_en_seccion_con_sesion_ve_aviso(ctrl_invitado, qapp):
     t = Demo(ctrl_invitado)
     t.refrescar_permisos()
     assert "Inicia sesión" in t.mensaje.text() and not t.tabla.isEnabled()
+
+
+# ---------------------------------------------------------------- Usuarios
+class FakeUsers:
+    def __init__(self):
+        self.calls = []
+        self.datos = [
+            {"id_usuario": 1, "correo": "a@x.mx", "nombre": "Ana", "apellido_paterno": "L", "apellido_materno": "M",
+             "rol": "admin", "role_id": 1},
+            {"id_usuario": 7, "correo": "c@x.mx", "nombre": "Cli", "apellido_paterno": "P", "apellido_materno": "Q",
+             "rol": "cliente", "role_id": 2}]
+
+    def listar(self):
+        self.calls.append(("listar",))
+        return self.datos
+
+    def obtener(self, i):
+        self.calls.append(("obtener", i))
+        return next(u for u in self.datos if u["id_usuario"] == i)
+
+    def crear(self, *a):
+        self.calls.append(("crear",) + a)
+        return {"id_usuario": 9}
+
+    def actualizar(self, i, **c):
+        self.calls.append(("actualizar", i, c))
+        return {}
+
+    def cambiar_password(self, i, nueva, actual=None):
+        self.calls.append(("password", i, nueva, actual))
+        return {}
+
+    def cambiar_rol(self, i, rol):
+        self.calls.append(("rol", i, rol))
+        return {}
+
+    def eliminar(self, i):
+        self.calls.append(("eliminar", i))
+        return {}
+
+
+def _tabu(c):
+    from ui.users_tab import UsersTab
+    c.users = FakeUsers()
+    return UsersTab(c)
+
+
+def test_admin_lista_todos(ctrl, qapp):
+    t = _tabu(ctrl)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 2)
+
+
+def test_cliente_ve_solo_su_renglon_y_botones_admin_deshabilitados(ctrl_cliente, qapp):
+    t = _tabu(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 1)
+    assert ctrl_cliente.users.calls[0] == ("obtener", 7)
+    assert not t.btn_crear.isEnabled() and not t.btn_eliminar.isEnabled() and not t.btn_rol.isEnabled()
+
+
+def test_crear_valida_password_corta_sin_llamar_a_la_red(ctrl, qapp):
+    t = _tabu(ctrl)
+    t.correo.setText("n@x.mx"); t.nombre.setText("N"); t.ap_paterno.setText("A"); t.ap_materno.setText("B")
+    t.password.setText("corta")
+    t.btn_crear.click()
+    assert "8 caracteres" in t.mensaje.text() and not [c for c in ctrl.users.calls if c[0] == "crear"]
+
+
+def test_crear_envia_los_campos(ctrl, qapp):
+    t = _tabu(ctrl)
+    t.correo.setText("n@x.mx"); t.nombre.setText("N"); t.ap_paterno.setText("A"); t.ap_materno.setText("B")
+    t.password.setText("claveSegura1"); t.rol.setCurrentText("cliente")
+    t.btn_crear.click()
+    assert esperar(qapp, lambda: ("crear", "n@x.mx", "N", "A", "B", "claveSegura1", "cliente") in ctrl.users.calls)
+
+
+def test_cambiar_password_propio_exige_actual(ctrl_cliente, qapp):
+    t = _tabu(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 1)
+    t.tabla.selectRow(0)
+    t.password.setText("nuevaClave12")
+    t.btn_password.click()
+    assert "contraseña actual" in t.mensaje.text().lower()
+    t.password_actual.setText("viejaClave12")
+    t.btn_password.click()
+    assert esperar(qapp, lambda: ("password", 7, "nuevaClave12", "viejaClave12") in ctrl_cliente.users.calls)
+
+
+def test_admin_cambia_password_de_otro_sin_actual(ctrl, qapp):
+    t = _tabu(ctrl)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 2)
+    t.tabla.selectRow(1)  # usuario 7, distinto del admin (user_id=1)
+    t.password.setText("resetClave12")
+    t.btn_password.click()
+    assert esperar(qapp, lambda: ("password", 7, "resetClave12", None) in ctrl.users.calls)
