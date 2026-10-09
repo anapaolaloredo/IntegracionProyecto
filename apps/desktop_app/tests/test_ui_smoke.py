@@ -332,3 +332,88 @@ def test_cancelar_envia_estado_cancelado_y_emite_senal(ctrl_cliente, qapp):
     assert esperar(qapp, lambda: "El aleph" in t.detalle.toPlainText())
     t.btn_cancelar.click()
     assert esperar(qapp, lambda: ("estado", 1, "cancelado") in ctrl_cliente.pedidos.calls and vistos)
+
+
+# ------------------------------------------------------------------- Pagos
+class FakePagos:
+    def __init__(self):
+        self.calls = []
+
+    def listar(self):
+        self.calls.append(("listar",))
+        return [{"id_pago": 1, "id_pedido": 1, "metodo": "tarjeta", "monto": 598.5,
+                 "fecha_pago": "2026-10-09T16:21:18", "id_cuenta": 7}]
+
+    def obtener(self, i):
+        self.calls.append(("obtener", i))
+        return self.listar()[0]
+
+    def registrar(self, p, m, monto=None):
+        self.calls.append(("registrar", p, m, monto))
+        return {"id_pago": 2}
+
+    def reembolsar(self, i):
+        self.calls.append(("reembolsar", i))
+        return {}
+
+
+class FakePedidosParaPagos:
+    def listar(self):
+        return [{"id_pedido": 4, "estado": "pendiente", "total": 100.0},
+                {"id_pedido": 5, "estado": "enviado", "total": 50.0}]
+
+
+def _tabg(c):
+    from ui.pagos_tab import PagosTab
+    c.pagos, c.pedidos = FakePagos(), FakePedidosParaPagos()
+    return PagosTab(c)
+
+
+def test_combo_solo_pedidos_pendientes(ctrl_cliente, qapp):
+    t = _tabg(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.combo_pedido.count() == 1)
+    assert t.combo_pedido.currentData() == 4
+
+
+def test_registrar_sin_monto_no_lo_envia(ctrl_cliente, qapp):
+    t = _tabg(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.combo_pedido.count() == 1 and t.btn_pagar.isEnabled())
+    t.combo_metodo.setCurrentText("efectivo")
+    t.btn_pagar.click()
+    assert esperar(qapp, lambda: ("registrar", 4, "efectivo", None) in ctrl_cliente.pagos.calls)
+
+
+def test_monto_invalido_no_llama_a_la_red(ctrl_cliente, qapp):
+    t = _tabg(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.combo_pedido.count() == 1 and t.btn_pagar.isEnabled())
+    t.monto.setText("abc")
+    t.btn_pagar.click()
+    assert "monto" in t.mensaje.text().lower()
+    assert not [c for c in ctrl_cliente.pagos.calls if c[0] == "registrar"]
+
+
+def test_monto_con_coma_decimal(ctrl_cliente, qapp):
+    t = _tabg(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.combo_pedido.count() == 1 and t.btn_pagar.isEnabled())
+    t.monto.setText("100,50")
+    t.btn_pagar.click()
+    assert esperar(qapp, lambda: ("registrar", 4, "tarjeta", 100.5) in ctrl_cliente.pagos.calls)
+
+
+def test_reembolsar_solo_admin(ctrl_cliente, ctrl, qapp):
+    t = _tabg(ctrl_cliente)
+    t.refrescar_permisos()
+    assert not t.btn_reembolsar.isEnabled()
+    t2 = _tabg(ctrl)
+    t2.refrescar_permisos()
+    assert t2.btn_reembolsar.isEnabled()
+
+
+def test_sin_pedidos_pendientes_no_se_puede_pagar(ctrl_cliente, qapp):
+    t = _tabg(ctrl_cliente)
+    t.refrescar_permisos()
+    assert not t.btn_pagar.isEnabled()
