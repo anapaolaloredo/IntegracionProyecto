@@ -1,12 +1,12 @@
-"""Pantalla de configuracion del servidor: modificar, probar, guardar y
-restaurar las URLs de los microservicios."""
+"""Pantalla de configuracion del servidor: URLs de los seis microservicios, radio http/https,
+probar, guardar y restaurar."""
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+from PySide6.QtWidgets import (QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
                                QSpinBox, QVBoxLayout, QWidget)
 
-from core.config import AppConfig, config_dir, normalizar_url
-from core.health import comprobar_libros, comprobar_login
+from core.config import SERVICIOS, AppConfig, cambiar_esquema, config_dir, normalizar_url, validar_url
+from core.health import comprobar_servicio
 from core.http import HttpClient
 from ui.async_task import ejecutar
 from ui.common import TEXTOS, Semaforo, poner_mensaje
@@ -18,26 +18,42 @@ class ConfigPanel(QWidget):
     def __init__(self, config, on_log=None):
         super().__init__()
         self.on_log = on_log
-        self.login_url = QLineEdit()
-        self.books_url = QLineEdit()
+        self.campos = {}
+        self.semaforos = {}
+        self.textos = {}
+        form = QFormLayout()
+        prueba = QFormLayout()
+        for clave, nombre, puerto in SERVICIOS:
+            campo = QLineEdit()
+            campo.setPlaceholderText(f"http://IP_DE_LA_INSTANCIA:{puerto}")
+            self.campos[clave] = campo
+            form.addRow(f"URL microservicio de {nombre}:", campo)
+            self.semaforos[clave], self.textos[clave] = Semaforo(), QLabel("Sin probar")
+            self.textos[clave].setWordWrap(True)
+            prueba.addRow(self._fila(self.semaforos[clave], self.textos[clave], nombre))
+
+        self.radio_http = QRadioButton("http (predeterminado)")
+        self.radio_https = QRadioButton("https")
+        self.radio_http.setChecked(True)
+        self.radio_https.toggled.connect(self._protocolo_cambio)
+        nota = QLabel("Al cambiar el protocolo se reescribe el esquema de las seis URLs (host y puerto no cambian). "
+                      "https requiere que el servidor tenga certificado; con http el tráfico no va cifrado.")
+        nota.setWordWrap(True)
+        nota.setStyleSheet("color: gray;")
+        fila_radio = QHBoxLayout()
+        fila_radio.addWidget(self.radio_http)
+        fila_radio.addWidget(self.radio_https)
+        fila_radio.addStretch()
+        capa_proto = QVBoxLayout()
+        capa_proto.addLayout(fila_radio)
+        capa_proto.addWidget(nota)
+        caja_proto = QGroupBox("Protocolo de conexión")
+        caja_proto.setLayout(capa_proto)
+
         self.timeout = QSpinBox(minimum=1, maximum=60, suffix=" s")
         self.intervalo = QSpinBox(minimum=5, maximum=3600, suffix=" s")
-        self.login_url.setPlaceholderText("http://IP_DE_LA_INSTANCIA:5000")
-        self.books_url.setPlaceholderText("http://IP_DE_LA_INSTANCIA:5001")
-
-        form = QFormLayout()
-        form.addRow("URL microservicio de Login:", self.login_url)
-        form.addRow("URL microservicio de Libros:", self.books_url)
         form.addRow("Tiempo de espera por petición:", self.timeout)
         form.addRow("Comprobar estado cada:", self.intervalo)
-
-        self.sem_login, self.txt_login = Semaforo(), QLabel("Sin probar")
-        self.sem_libros, self.txt_libros = Semaforo(), QLabel("Sin probar")
-        for t in (self.txt_login, self.txt_libros):
-            t.setWordWrap(True)
-        prueba = QFormLayout()
-        prueba.addRow(self._fila(self.sem_login, self.txt_login, "Login"))
-        prueba.addRow(self._fila(self.sem_libros, self.txt_libros, "Libros"))
         caja_prueba = QGroupBox("Resultado de la prueba")
         caja_prueba.setLayout(prueba)
 
@@ -57,6 +73,7 @@ class ConfigPanel(QWidget):
         ruta.setStyleSheet("color: gray;")
 
         capa = QVBoxLayout(self)
+        capa.addWidget(caja_proto)
         capa.addLayout(form)
         capa.addLayout(botones)
         capa.addWidget(self.mensaje)
@@ -75,19 +92,27 @@ class ConfigPanel(QWidget):
         h.addWidget(texto, 1)
         return w
 
+    def _protocolo_cambio(self, https):
+        """El radio reescribe el esquema de las seis URLs del formulario (host, puerto y ruta intactos)."""
+        esquema = "https" if https else "http"
+        for campo in self.campos.values():
+            url = normalizar_url(campo.text())
+            if url and not validar_url(url):
+                campo.setText(cambiar_esquema(url, esquema))
+
     def cargar(self, config):
-        self.login_url.setText(config.login_url)
-        self.books_url.setText(config.books_url)
+        for clave, campo in self.campos.items():
+            campo.setText(config.url(clave))
+        self.radio_https.blockSignals(True)  # cargar no debe reescribir las URLs guardadas
+        (self.radio_https if config.protocolo == "https" else self.radio_http).setChecked(True)
+        self.radio_https.blockSignals(False)
         self.timeout.setValue(config.timeout)
         self.intervalo.setValue(config.health_interval)
 
     def _desde_formulario(self):
-        return AppConfig(
-            login_url=normalizar_url(self.login_url.text()),
-            books_url=normalizar_url(self.books_url.text()),
-            timeout=self.timeout.value(),
-            health_interval=self.intervalo.value(),
-        )
+        urls = {f"{clave}_url": normalizar_url(campo.text()) for clave, campo in self.campos.items()}
+        return AppConfig(**urls, protocolo="https" if self.radio_https.isChecked() else "http",
+                         timeout=self.timeout.value(), health_interval=self.intervalo.value())
 
     def probar(self):
         config = self._desde_formulario()
@@ -97,16 +122,18 @@ class ConfigPanel(QWidget):
             return
         self.btn_probar.setEnabled(False)
         poner_mensaje(self.mensaje, "Probando con los valores del formulario (aún sin guardar)…")
-        http_login = HttpClient("Login", config.login_url, config.timeout, self.on_log)
-        http_libros = HttpClient("Libros", config.books_url, config.timeout, self.on_log)
-        ejecutar(lambda: (comprobar_login(http_login), comprobar_libros(http_libros)),
-                 self._resultado_prueba, self._fallo_prueba)
+        clientes = [(clave, nombre, HttpClient(nombre, config.url(clave), config.timeout, self.on_log))
+                    for clave, nombre, _ in SERVICIOS]
+        ejecutar(lambda: [comprobar_servicio(http, nombre) for _, nombre, http in clientes],
+                 lambda resultados: self._resultado_prueba([c for c, _, _ in clientes], resultados),
+                 self._fallo_prueba)
 
-    def _resultado_prueba(self, resultados):
+    def _resultado_prueba(self, claves, resultados):
         self.btn_probar.setEnabled(True)
-        for (sem, txt), r in zip(((self.sem_login, self.txt_login), (self.sem_libros, self.txt_libros)), resultados):
-            sem.set_estado(r.estado)
-            txt.setText(f"{TEXTOS[r.estado]} — {r.detalle}")
+        for clave, r in zip(claves, resultados):
+            self.semaforos[clave].set_estado(r.estado)
+            redis = f" · Redis: {r.redis}" if r.redis else ""
+            self.textos[clave].setText(f"{TEXTOS[r.estado]} — {r.detalle}{redis}")
         poner_mensaje(self.mensaje, "Prueba terminada.")
 
     def _fallo_prueba(self, exc):
@@ -130,4 +157,4 @@ class ConfigPanel(QWidget):
 
     def restaurar(self):
         self.cargar(AppConfig.defaults())
-        poner_mensaje(self.mensaje, "Se cargaron los valores predeterminados. Presiona Guardar para aplicarlos.")
+        poner_mensaje(self.mensaje, "Se cargaron los valores predeterminados (http). Presiona Guardar para aplicarlos.")

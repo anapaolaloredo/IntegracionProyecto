@@ -52,7 +52,7 @@ class PedidosTab(CrudTab):
         self.btn_cancelar = QPushButton("Cancelar pedido (PATCH)")
         self.btn_enviar = QPushButton("Marcar enviado (PATCH)")
         self.btn_eliminar = QPushButton("Eliminar cancelado (DELETE)")
-        self.btn_eliminar.setStyleSheet("color: #c62828;")
+        self.btn_eliminar.setStyleSheet("QPushButton:enabled { color: #c62828; }")
         self.registrar(self.btn_recargar, self.btn_agregar, self.btn_quitar, self.btn_crear, self.btn_cancelar)
         self.solo_admin(self.btn_enviar, self.btn_eliminar)
         self.btn_recargar.clicked.connect(self.recargar)

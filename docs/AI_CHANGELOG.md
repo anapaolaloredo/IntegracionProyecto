@@ -112,3 +112,15 @@ Formato: fecha — resumen — archivos — referencia al detalle completo.
   (`common/tests/test_redis_real.py`, Task 8) deben correrse en la instancia de GCP; pendientes.
 - **Despliegue (aviso)**: los tokens previos no tienen `jti`, todos los usuarios deben iniciar sesión de nuevo una
   vez; la contraseña de `REDIS_URL` debe codificarse con porcentaje (una URL inválida da 503 en rutas protegidas).
+
+## 2026-10-09
+
+- **App de escritorio con los seis microservicios** (rama `feat/gui-crud`): pestañas CRUD de Users,
+  Authors, Pedidos y Pagos (clase base `CrudTab` con hilos, refresh de token, 401/403/409/503 y permisos
+  por rol), semáforos de los seis servicios con estado de Redis (`/health`), radio http/https (por
+  defecto http) que reescribe el esquema de las seis URLs, enmascarado de `password_actual`/`password_nueva`
+  en el registro HTTP, y el refresh de sesión ya no cierra la sesión ante 503 o falta de red. Soap expone
+  `id_libro` como atributo del `<book>`. Archivos: `apps/desktop_app/{core,ui,tests}`, `main.py`,
+  `apps/services/soap/app.py`. **No verificado**: la interfaz solo se probó en modo offscreen con APIs
+  falsas y contra puertos cerrados; nunca contra los servicios reales (checklist manual en
+  `apps/desktop_app/README.md`). Plan: `docs/superpowers/plans/2026-10-09-app-escritorio-crud-microservicios.md`.

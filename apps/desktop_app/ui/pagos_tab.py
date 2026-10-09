@@ -49,7 +49,7 @@ class PagosTab(CrudTab):
         self.btn_recargar = QPushButton("Recargar (GET)")
         self.btn_pagar = QPushButton("Registrar pago (POST)")
         self.btn_reembolsar = QPushButton("Reembolsar (DELETE)")
-        self.btn_reembolsar.setStyleSheet("color: #c62828;")
+        self.btn_reembolsar.setStyleSheet("QPushButton:enabled { color: #c62828; }")
         self.registrar(self.btn_recargar, self.btn_pagar)
         self.solo_admin(self.btn_reembolsar)
         self.btn_recargar.clicked.connect(self.recargar)

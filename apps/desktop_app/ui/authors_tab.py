@@ -39,7 +39,7 @@ class AuthorsTab(CrudTab):
         self.btn_crear = QPushButton("Crear (POST)")
         self.btn_renombrar = QPushButton("Renombrar (PATCH)")
         self.btn_eliminar = QPushButton("Eliminar (DELETE)")
-        self.btn_eliminar.setStyleSheet("color: #c62828;")
+        self.btn_eliminar.setStyleSheet("QPushButton:enabled { color: #c62828; }")
         self.registrar(self.btn_recargar)
         self.solo_admin(self.btn_crear, self.btn_renombrar, self.btn_eliminar, self.btn_vincular, self.btn_desvincular)
         self.btn_recargar.clicked.connect(self.recargar)

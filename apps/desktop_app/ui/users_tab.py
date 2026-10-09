@@ -38,7 +38,7 @@ class UsersTab(CrudTab):
         self.btn_password = QPushButton("Cambiar contraseña (PATCH)")
         self.btn_rol = QPushButton("Cambiar rol (PATCH)")
         self.btn_eliminar = QPushButton("Eliminar (DELETE)")
-        self.btn_eliminar.setStyleSheet("color: #c62828;")
+        self.btn_eliminar.setStyleSheet("QPushButton:enabled { color: #c62828; }")
         self.btn_limpiar = QPushButton("Limpiar")
         self.registrar(self.btn_recargar, self.btn_guardar, self.btn_password, self.btn_limpiar)
         self.solo_admin(self.btn_crear, self.btn_rol, self.btn_eliminar, self.rol)

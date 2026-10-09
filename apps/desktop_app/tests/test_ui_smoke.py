@@ -417,3 +417,97 @@ def test_sin_pedidos_pendientes_no_se_puede_pagar(ctrl_cliente, qapp):
     t = _tabg(ctrl_cliente)
     t.refrescar_permisos()
     assert not t.btn_pagar.isEnabled()
+
+
+# ------------------------------------------------- Configuracion y ventana
+def test_radio_https_reescribe_las_seis_urls(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRERIA_CONFIG_DIR", str(tmp_path))
+    from core.config import SERVICIOS, AppConfig
+    from ui.config_panel import ConfigPanel
+    p = ConfigPanel(AppConfig.defaults())
+    assert p.radio_http.isChecked()
+    p.radio_https.setChecked(True)
+    assert all(p.campos[k].text().startswith("https://") for k, _, _ in SERVICIOS)
+    p.radio_http.setChecked(True)
+    assert p.campos["pagos"].text() == "http://localhost:5005"
+
+
+def test_radio_conserva_host_y_puerto_personalizados(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRERIA_CONFIG_DIR", str(tmp_path))
+    from core.config import AppConfig
+    from ui.config_panel import ConfigPanel
+    p = ConfigPanel(AppConfig.defaults())
+    p.campos["users"].setText("http://34.10.20.30:5002/")
+    p.radio_https.setChecked(True)
+    assert p.campos["users"].text() == "https://34.10.20.30:5002"
+
+
+def test_guardar_persiste_protocolo_https(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRERIA_CONFIG_DIR", str(tmp_path))
+    from core.config import AppConfig
+    from ui.config_panel import ConfigPanel
+    p = ConfigPanel(AppConfig.defaults())
+    p.radio_https.setChecked(True)
+    p.guardar()
+    assert AppConfig.load().protocolo == "https"
+
+
+def test_cargar_config_https_no_reescribe_urls_guardadas(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRERIA_CONFIG_DIR", str(tmp_path))
+    from core.config import AppConfig
+    from ui.config_panel import ConfigPanel
+    c = AppConfig.defaults().con_protocolo("https")
+    c.pagos_url = "http://otro:9000"  # quien edita a mano manda sobre el radio
+    p = ConfigPanel(c)
+    assert p.radio_https.isChecked() and p.campos["pagos"].text() == "http://otro:9000"
+
+
+def test_restaurar_vuelve_a_http(qapp, tmp_path, monkeypatch):
+    monkeypatch.setenv("LIBRERIA_CONFIG_DIR", str(tmp_path))
+    from core.config import AppConfig
+    from ui.config_panel import ConfigPanel
+    p = ConfigPanel(AppConfig.defaults().con_protocolo("https"))
+    p.restaurar()
+    assert p.radio_http.isChecked() and p.campos["login"].text() == "http://localhost:5000"
+
+
+def test_password_se_enmascara_en_el_registro(qapp):
+    from ui.common import RegistroHttp, RegistroHttpWidget
+    reg = RegistroHttp()
+    w = RegistroHttpWidget(reg)
+    w.agregar({"servicio": "Usuarios", "metodo": "PATCH", "url": "http://h/api/users/1/password", "params": None,
+               "body": {"password_nueva": "secreta12", "password_actual": "vieja1234"}, "status": 200, "ms": 5})
+    texto = w.texto.toPlainText()
+    assert "secreta12" not in texto and "vieja1234" not in texto
+
+
+def test_tarjeta_estado_muestra_redis(qapp):
+    from datetime import datetime
+    from core.health import OK, EstadoServicio
+    from ui.main_window import TarjetaEstado
+    t = TarjetaEstado("Usuarios")
+    t.mostrar(EstadoServicio(OK, "Servicio y base de datos funcionando.", datetime.now(), redis="error"), "http://h:5002")
+    assert "Redis: error" in t.redis.text()
+
+
+def test_ventana_principal_invitado_arma_nueve_pestanas_y_seis_semaforos(qapp, tmp_path, monkeypatch):
+    """Integracion con puertos cerrados: la ventana arma todo, los semaforos quedan en rojo y no truena."""
+    monkeypatch.setenv("LIBRERIA_CONFIG_DIR", str(tmp_path))
+    from core.config import SERVICIOS, AppConfig
+    from core.health import CAIDO
+    from main import Controlador
+    from ui.main_window import MainWindow
+    c = AppConfig.defaults()
+    for clave, _, _ in SERVICIOS:
+        setattr(c, f"{clave}_url", "http://127.0.0.1:1")
+    c.timeout = 1
+    c.save()
+    ctrl = Controlador()
+    w = MainWindow(ctrl, None, None)
+    assert w.tabs.count() == 9
+    assert set(w.estado.tarjetas) == {k for k, _, _ in SERVICIOS}
+    assert esperar(qapp, lambda: all(w.sb[k].toolTip() == "Sin conexión" for k, _, _ in SERVICIOS), ms=8000)
+    # invitado: las pestanas con sesion avisan; autores (publica) no
+    assert "Inicia sesión" in w.users.mensaje.text() and "Inicia sesión" in w.pedidos.mensaje.text()
+    assert not w.users.tabla.isEnabled() and w.authors.tabla.isEnabled()
+    w.close()
