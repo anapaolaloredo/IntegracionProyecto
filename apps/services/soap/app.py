@@ -284,6 +284,12 @@ def error_xml_response(message, status):
     return Response(body, status=status, mimetype="application/xml")
 
 
+@app.errorhandler(psycopg2.DataError)
+def _dato_invalido(_exc):
+    """Valor demasiado largo, fuera de rango o de tipo incorrecto: error del cliente, no 500."""
+    return error_xml_response("Algun campo tiene un formato o longitud invalidos (el isbn admite maximo 13 caracteres).", 400)
+
+
 def _registrar_acceso(token, datos, resultado):
     ruta = f"{request.method} {request.path}"
     if resultado:
@@ -722,4 +728,4 @@ def eliminar_libro(isbn):
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5001)), debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5001)), debug=os.getenv("SOAP_DEBUG", "false").lower() == "true")

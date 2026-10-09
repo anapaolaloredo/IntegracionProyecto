@@ -86,10 +86,10 @@ echo
 echo "(JWT de cliente id=$ID_CLIENTE, role_id=2, firmado localmente con la clave compartida: se usa solo para las pruebas de rol/propiedad; el 2FA real se hizo con el admin)"
 
 req "GET /session (token valido)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$L/session?format=json" -H "$AH" "$L/session?format=json"
-req "GET /session sin token (401)" "curl -i $L/session?format=json" "$L/session?format=json"
+req "GET /session sin token (200, autenticado:false)" "curl -i $L/session?format=json" "$L/session?format=json"
 req "POST /session/extend (emite token nuevo y revoca el anterior)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$L/session/extend?format=json" -X POST -H "$AH" "$L/session/extend?format=json"
 NUEVO=$(json "['session_token']"); [ -n "$NUEVO" ] && { VIEJO="$ADMIN"; ADMIN="$NUEVO"; AH="Authorization: Bearer $ADMIN"; }
-req "El token anterior ya no sirve tras extend (401 revocado)" 'curl -i -H "Authorization: Bearer $ADMIN_VIEJO" '"$L/session?format=json" -H "Authorization: Bearer ${VIEJO:-x}" "$L/session?format=json"
+req "El token anterior ya no sirve tras extend (200, autenticado:false)" 'curl -i -H "Authorization: Bearer $ADMIN_VIEJO" '"$L/session?format=json" -H "Authorization: Bearer ${VIEJO:-x}" "$L/session?format=json"
 req "POST /session/refresh (refresh token -> acceso nuevo)" "curl -i -X POST $L/session/refresh?format=json -H '$JSON' -d '{\"refresh_token\":\"\$REFRESH_ADMIN\"}'" \
   -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$REFRESH_ADMIN\"}"
 NUEVO=$(json "['session_token']"); [ -n "$NUEVO" ] && { ADMIN="$NUEVO"; AH="Authorization: Bearer $ADMIN"; }
@@ -126,7 +126,7 @@ req "DELETE de nuevo (404)" "curl -i -X DELETE ... $U/api/users/$ID_EXTRA" -X DE
 
 # ============================================================================
 seccion "3. SOAP / LIBROS (5001, respuestas XML) + cache Redis"
-ISBN="978-EVID-$STAMP"
+ISBN="EV$STAMP"   # la columna isbn admite maximo 13 caracteres
 req "GET /api/libros (publico; 1a vez llena el cache books:list:*)" "curl -i $S/api/libros" "$S/api/libros"
 req "GET /api/libros/buscar?titulo=a" "curl -i '$S/api/libros/buscar?titulo=a'" "$S/api/libros/buscar?titulo=a"
 req "GET /api/libros/temas" "curl -i $S/api/libros/temas" "$S/api/libros/temas"
@@ -136,6 +136,7 @@ req "POST /api/libros como cliente (403, solo admin)" "curl -i -X POST -H 'Autho
 req "POST /api/libros admin con campos faltantes (400)" "curl -i -X POST -H 'Authorization: Bearer \$ADMIN' $S/api/libros -d '{\"isbn\":\"x\"}'" -X POST -H "$AH" -H "$JSON" -d '{"isbn":"x"}' "$S/api/libros"
 req "POST /api/libros admin (201): invalida el cache" "curl -i -X POST -H 'Authorization: Bearer \$ADMIN' $S/api/libros -d '{...}'" \
   -X POST -H "$AH" -H "$JSON" -d "{\"isbn\":\"$ISBN\",\"title\":\"Libro de evidencias\",\"publicationYear\":2026,\"price\":199.5,\"stock\":10,\"format\":\"Tapa dura\",\"authors\":[\"Autor Evidencia\"],\"genres\":[\"Pruebas\"]}" "$S/api/libros"
+req "POST con isbn de mas de 13 caracteres (400, no 500)" "curl -i -X POST ... -d '{\"isbn\":\"978-DEMASIADO-LARGO\",...}'" -X POST -H "$AH" -H "$JSON" -d '{"isbn":"978-DEMASIADO-LARGO","title":"X","price":1,"stock":1,"format":"Tapa dura"}' "$S/api/libros"
 req "POST con ISBN repetido (409)" "curl -i -X POST ... (mismo isbn)" -X POST -H "$AH" -H "$JSON" -d "{\"isbn\":\"$ISBN\",\"title\":\"X\",\"price\":1,\"stock\":1,\"format\":\"Tapa dura\"}" "$S/api/libros"
 req "GET /api/libros/{isbn} (1a vez: MISS)" "curl -i $S/api/libros/$ISBN" "$S/api/libros/$ISBN"
 req "GET /api/libros/{isbn} (2a vez: sale del cache books:{isbn})" "curl -i $S/api/libros/$ISBN" "$S/api/libros/$ISBN"
@@ -238,7 +239,7 @@ req "... ni en authors al escribir (401)" 'curl -i -X POST -H "Authorization: Be
 req "... ni en pedidos (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$P/api/pedidos" -H "$AH" "$P/api/pedidos"
 req "... ni en pagos (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$G/api/pagos" -H "$AH" "$G/api/pagos"
 req "... ni en soap al crear libros (401)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$S/api/libros" -X POST -H "$AH" -H "$JSON" -d '{}' "$S/api/libros"
-req "... ni en login /session (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$L/session?format=json" -H "$AH" "$L/session?format=json"
+req "... ni en login /session (200, autenticado:false)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$L/session?format=json" -H "$AH" "$L/session?format=json"
 req "El refresh token del admin tambien quedo invalidado (401)" "curl -i -X POST $L/session/refresh?format=json -d '{\"refresh_token\":\"\$REFRESH_ADMIN\"}'" \
   -X POST "$L/session/refresh?format=json" -H "$JSON" -d "{\"refresh_token\":\"$REFRESH_ADMIN\"}"
 req "Los endpoints publicos siguen funcionando sin sesion (catalogo, roles, autores, health)" "curl -i $A/api/authors" "$A/api/authors"

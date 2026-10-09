@@ -79,3 +79,20 @@ def test_delete_con_pedidos_da_409_xml(cliente, monkeypatch):
     assert resp.status_code == 409
     assert resp.mimetype == "application/xml"
     assert b"pedidos asociados" in resp.data
+
+
+def test_dato_demasiado_largo_da_400_xml_y_no_500(cliente, monkeypatch):
+    class Cur(FakeCursor):
+        def execute(self, sql, params=None):
+            if "INSERT INTO libros" in sql:
+                raise psycopg2.errors.StringDataRightTruncation()
+
+        def fetchone(self):
+            return (1,)
+
+    monkeypatch.setattr(books, "get_connection", lambda: FakeConn(Cur([])))
+    monkeypatch.setattr(books, "get_or_create_id", lambda *a, **k: 1)
+    resp = cliente.post("/api/libros", json={"isbn": "x" * 30, "title": "T", "price": 1, "stock": 1, "format": "f"},
+                        headers=_h(1))
+    assert resp.status_code == 400 and resp.mimetype == "application/xml"
+    assert b"13 caracteres" in resp.data
