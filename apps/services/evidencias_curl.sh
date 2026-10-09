@@ -219,6 +219,7 @@ PAGO2=$(json "['id_pago']")
 req "DELETE /api/pagos/{id} como admin (reembolso: pedido vuelve a pendiente)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $G/api/pagos/$PAGO2" -X DELETE -H "$AH" "$G/api/pagos/$PAGO2"
 req "PATCH pedido -> cancelado (devuelve stock)" "curl -i -X PATCH -H 'Authorization: Bearer \$CLIENTE' $P/api/pedidos/$PED2/estado -d '{\"estado\":\"cancelado\"}'" -X PATCH -H "$CH" -H "$JSON" -d '{"estado":"cancelado"}' "$P/api/pedidos/$PED2/estado"
 req "DELETE pedido cancelado como admin (200)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $P/api/pedidos/$PED2" -X DELETE -H "$AH" "$P/api/pedidos/$PED2"
+req "GET stock tras cancelar el segundo pedido (el stock se devolvio: 17)" "curl -i $S/api/libros/$ISBN" "$S/api/libros/$ISBN"
 req "DELETE pedido enviado (409, no esta cancelado)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $P/api/pedidos/$PED" -X DELETE -H "$AH" "$P/api/pedidos/$PED"
 
 # ============================================================================
@@ -231,8 +232,13 @@ req "CORS preflight (OPTIONS) desde un cliente web" "curl -i -X OPTIONS -H 'Orig
 
 # ============================================================================
 seccion "8. LIMPIEZA y LOGOUT: revocacion en Redis visible en TODOS los servicios"
-req "Limpieza: DELETE /api/libros/{isbn} (admin; 409 si tiene pedidos asociados)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $S/api/libros/$ISBN" -X DELETE -H "$AH" "$S/api/libros/$ISBN"
-req "Limpieza: DELETE /api/users/{id} del cliente de prueba" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $U/api/users/$ID_CLIENTE" -X DELETE -H "$AH" "$U/api/users/$ID_CLIENTE"
+ISBN2="ED$STAMP"
+req "POST libro desechable sin pedidos" "curl -i -X POST -H 'Authorization: Bearer \$ADMIN' $S/api/libros -d '{\"isbn\":\"$ISBN2\",...}'" -X POST -H "$AH" -H "$JSON" -d "{\"isbn\":\"$ISBN2\",\"title\":\"Libro desechable\",\"price\":10,\"stock\":1,\"format\":\"Tapa dura\"}" "$S/api/libros"
+req "DELETE /api/libros/{isbn} como cliente (403, solo admin)" "curl -i -X DELETE -H 'Authorization: Bearer \$CLIENTE' $S/api/libros/$ISBN2" -X DELETE -H "$CH" "$S/api/libros/$ISBN2"
+req "DELETE /api/libros/{isbn} como admin (200)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $S/api/libros/$ISBN2" -X DELETE -H "$AH" "$S/api/libros/$ISBN2"
+req "GET del libro borrado (404; el cache se invalido)" "curl -i $S/api/libros/$ISBN2" "$S/api/libros/$ISBN2"
+req "DELETE de un libro con pedidos asociados (409, no se pierde historial)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $S/api/libros/$ISBN" -X DELETE -H "$AH" "$S/api/libros/$ISBN"
+req "DELETE de un usuario con pedidos (409, no se pierde historial)" "curl -i -X DELETE -H 'Authorization: Bearer \$ADMIN' $U/api/users/$ID_CLIENTE" -X DELETE -H "$AH" "$U/api/users/$ID_CLIENTE"
 req "POST /logout (admin): borra sesion+refresh en Redis y revoca el JWT" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$L/logout?format=json" -X POST -H "$AH" "$L/logout?format=json"
 req "El mismo token ya no sirve en users (401)" 'curl -i -H "Authorization: Bearer $ADMIN" '"$U/api/users" -H "$AH" "$U/api/users"
 req "... ni en authors al escribir (401)" 'curl -i -X POST -H "Authorization: Bearer $ADMIN" '"$A/api/authors" -X POST -H "$AH" -H "$JSON" -d '{"nombre_autor":"X"}' "$A/api/authors"
