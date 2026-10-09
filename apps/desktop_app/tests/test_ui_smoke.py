@@ -253,3 +253,82 @@ def test_nombre_vacio_o_largo_no_llama_a_la_red(ctrl, qapp):
     t.nombre.setText("x" * 151)
     t.btn_crear.click()
     assert not [c for c in ctrl.authors.calls if c[0] == "crear"]
+
+
+# ----------------------------------------------------------------- Pedidos
+class FakePedidos:
+    def __init__(self):
+        self.calls = []
+
+    def listar(self):
+        self.calls.append(("listar",))
+        return [{"id_pedido": 1, "fecha_creacion": "2026-10-09T16:21:17", "estado": "pendiente",
+                 "total": 598.5, "id_cuenta": 7}]
+
+    def obtener(self, i):
+        self.calls.append(("obtener", i))
+        return {"id_pedido": i, "estado": "pendiente", "total": 598.5, "id_cuenta": 7,
+                "lineas": [{"id_libro": 11, "isbn": "978", "titulo": "El aleph", "cantidad": 3,
+                            "precio_unitario": 199.5}]}
+
+    def crear(self, lineas):
+        self.calls.append(("crear", lineas))
+        return {"id_pedido": 2}
+
+    def cambiar_estado(self, i, e):
+        self.calls.append(("estado", i, e))
+        return {}
+
+    def eliminar(self, i):
+        self.calls.append(("eliminar", i))
+        return {}
+
+
+def _tabp(c):
+    from ui.pedidos_tab import PedidosTab
+    c.pedidos, c.libros = FakePedidos(), FakeLibros()
+    return PedidosTab(c)
+
+
+def test_invitado_ve_aviso_de_sesion(ctrl_invitado, qapp):
+    t = _tabp(ctrl_invitado)
+    t.refrescar_permisos()
+    assert "Inicia sesión" in t.mensaje.text() and not t.btn_crear.isEnabled()
+
+
+def test_crear_pedido_acumula_lineas_repetidas(ctrl_cliente, qapp):
+    t = _tabp(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.combo_libro.count() == 1)
+    t.cantidad.setValue(2)
+    t.btn_agregar.click()
+    t.cantidad.setValue(3)
+    t.btn_agregar.click()
+    assert t.tabla_lineas.rowCount() == 1
+    t.btn_crear.click()
+    assert esperar(qapp, lambda: ("crear", [{"id_libro": 11, "cantidad": 5}]) in ctrl_cliente.pedidos.calls)
+
+
+def test_crear_sin_lineas_no_llama_a_la_red(ctrl_cliente, qapp):
+    t = _tabp(ctrl_cliente)
+    t.btn_crear.click()
+    assert "al menos una línea" in t.mensaje.text()
+    assert not [c for c in ctrl_cliente.pedidos.calls if c[0] == "crear"]
+
+
+def test_cliente_no_puede_enviar_ni_eliminar(ctrl_cliente, qapp):
+    t = _tabp(ctrl_cliente)
+    t.refrescar_permisos()
+    assert not t.btn_enviar.isEnabled() and not t.btn_eliminar.isEnabled() and t.btn_cancelar.isEnabled()
+
+
+def test_cancelar_envia_estado_cancelado_y_emite_senal(ctrl_cliente, qapp):
+    t = _tabp(ctrl_cliente)
+    t.al_activar()
+    assert esperar(qapp, lambda: t.tabla.rowCount() == 1)
+    vistos = []
+    t.pedido_cambio.connect(lambda: vistos.append(1))
+    t.tabla.selectRow(0)
+    assert esperar(qapp, lambda: "El aleph" in t.detalle.toPlainText())
+    t.btn_cancelar.click()
+    assert esperar(qapp, lambda: ("estado", 1, "cancelado") in ctrl_cliente.pedidos.calls and vistos)
