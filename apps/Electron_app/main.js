@@ -105,10 +105,9 @@ ipcMain.handle("ollama:chat", (event, { id, baseUrl, model, mensajes }) =>
     }),
   })));
 
-ipcMain.handle("ollama:filtro", (_event, { id, baseUrl, model, libros, pregunta }) =>
-  conCancelacion(id, async (signal) => ({
-    delCatalogo: await preguntaEsDelCatalogo({ baseUrl, model, libros, pregunta, signal }),
-  })));
+ipcMain.handle("ollama:filtro", (_event, { id, baseUrl, model, libros, historial, pregunta }) =>
+  conCancelacion(id, async (signal) =>
+    preguntaEsDelCatalogo({ baseUrl, model, libros, historial, pregunta, signal })));
 
 ipcMain.handle("ollama:cancelar", (_event, id) => {
   const ctl = cancelaciones.get(id);

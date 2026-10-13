@@ -69,7 +69,13 @@
   async function cargarContexto() {
     const baseUrl = $("baseUrlInput").value.trim();
     if (!baseUrl) throw new Error("Indica primero la URL del microservicio de libros en la pestaña Catálogo.");
-    const xml = await window.catalogApi.obtenerLibrosXml(baseUrl, ENDPOINT_CONTEXTO);
+    let xml;
+    try {
+      xml = await window.catalogApi.obtenerLibrosXml(baseUrl, ENDPOINT_CONTEXTO);
+    } catch (e) {
+      // un tropiezo momentáneo de red hacia la nube no debería costar la pregunta: un reintento
+      xml = await window.catalogApi.obtenerLibrosXml(baseUrl, ENDPOINT_CONTEXTO);
+    }
     libros = window.catalogApi.parsearLibros(xml);
     cargadoEn = Date.now();
     const hora = new Date().toLocaleTimeString();
@@ -111,7 +117,7 @@
 
       if (filtro) {
         pendiente = burbuja("asistente", "Verificando que la pregunta sea del catálogo…", "pensando");
-        const f = await window.ollamaApi.filtro({ id, baseUrl, model, libros, pregunta });
+        const f = await window.ollamaApi.filtro({ id, baseUrl, model, libros, historial, pregunta });
         pendiente.remove();
         pendiente = null;
         if (!f.ok) {
@@ -120,6 +126,8 @@
         }
         if (!f.delCatalogo) {
           burbuja("asistente", window.ollamaApi.FRASE_RECHAZO, "rechazo");
+          estado("El filtro estricto marcó la última pregunta como ajena al catálogo. Si sí lo era, reformúlala " +
+            "mencionando el libro o el autor, o desactiva el filtro.");
           return;
         }
       }

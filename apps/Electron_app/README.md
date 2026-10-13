@@ -52,8 +52,11 @@ Cómo funciona:
    Electron, igual que las del catálogo; el renderer solo recibe los fragmentos de texto.
 3. **Solo responde del catálogo** en tres capas: instrucciones estrictas + ejemplos de
    rechazo en el mensaje de sistema, temperatura baja (0.2) y un **filtro previo**
-   (casilla "Filtro estricto", activada por omisión) que, con una llamada corta, decide si
-   la pregunta trata del catálogo; si no, responde una frase fija sin generar nada.
+   (casilla "Filtro estricto", activada por omisión). El filtro primero revisa, sin llamar al
+   modelo, si la pregunta menciona algo de una librería (precio, barato, existencias, autor…) o un
+   título, autor o género del catálogo; solo si no, hace una llamada corta al modelo con ejemplos y el
+   mensaje anterior como contexto (ante la duda deja pasar). Si la pregunta es ajena, responde una
+   frase fija sin generar nada. Esto evita que un modelo chico rechace preguntas legítimas.
 4. Memoria de la conversación: los últimos 10 mensajes (los turnos rechazados o
    cancelados no entran al historial).
 
