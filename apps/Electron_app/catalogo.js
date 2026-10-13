@@ -56,6 +56,20 @@ function extraerImagenes(bloque) {
   return resultado;
 }
 
+function extraerConceptos(bloque) {
+  const contenedor = extraerBloque(bloque, "concepts");
+  const regex = /<concept([^>]*)>([\s\S]*?)<\/concept>/g;
+  const resultado = [];
+  let match;
+  while ((match = regex.exec(contenedor)) !== null) {
+    resultado.push({
+      name: extraerAtributo(match[1], "name"),
+      definition: extraerTexto(match[2], "definition"),
+    });
+  }
+  return resultado;
+}
+
 /**
  * Convierte el XML de GET <endpoint configurado> (misma forma que
  * apps/services/soap/app.py:149 books_xml_response) en objetos JS.
@@ -88,6 +102,7 @@ function parsearLibrosXml(xmlTexto) {
       stock: extraerTexto(cuerpo, "stock"),
       format: extraerTexto(cuerpo, "format"),
       images: extraerImagenes(cuerpo),
+      concepts: extraerConceptos(cuerpo),
     });
   }
   return resultado;

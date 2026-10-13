@@ -8,6 +8,7 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const path = require("path");
 const http = require("http");
 const https = require("https");
+const { chatStream, preguntaEsDelCatalogo, listarModelos } = require("./ollama.js");
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -77,4 +78,47 @@ function httpGetXml(urlString) {
 ipcMain.handle("catalogo:obtener-libros", async (_event, { baseUrl, endpoint }) => {
   const url = new URL(endpoint, baseUrl);
   return httpGetXml(url.toString());
+});
+
+// ---- Asistente (Ollama): las llamadas se hacen aqui, sin CORS; el renderer solo recibe tokens ----
+const cancelaciones = new Map(); // id de pregunta -> AbortController
+
+async function conCancelacion(id, trabajo) {
+  const ctl = new AbortController();
+  cancelaciones.set(id, ctl);
+  try {
+    return { ok: true, ...(await trabajo(ctl.signal)) };
+  } catch (e) {
+    return { ok: false, error: e.message, abortado: Boolean(e.abortado) };
+  } finally {
+    cancelaciones.delete(id);
+  }
+}
+
+ipcMain.handle("ollama:chat", (event, { id, baseUrl, model, mensajes }) =>
+  conCancelacion(id, async (signal) => ({
+    texto: await chatStream({
+      baseUrl, model, messages: mensajes, signal,
+      onToken: (token) => {
+        if (!event.sender.isDestroyed()) event.sender.send("ollama:token", { id, token });
+      },
+    }),
+  })));
+
+ipcMain.handle("ollama:filtro", (_event, { id, baseUrl, model, libros, pregunta }) =>
+  conCancelacion(id, async (signal) => ({
+    delCatalogo: await preguntaEsDelCatalogo({ baseUrl, model, libros, pregunta, signal }),
+  })));
+
+ipcMain.handle("ollama:cancelar", (_event, id) => {
+  const ctl = cancelaciones.get(id);
+  if (ctl) ctl.abort();
+});
+
+ipcMain.handle("ollama:modelos", async (_event, baseUrl) => {
+  try {
+    return { ok: true, modelos: await listarModelos(baseUrl) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 });
