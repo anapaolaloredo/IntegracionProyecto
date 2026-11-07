@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="leaflet.css">
+<style>
+  html, body, #mapa { height: 100%; margin: 0; }
+  .camion { font-size: 30px; line-height: 30px; text-align: center; filter: drop-shadow(0 2px 2px rgba(0,0,0,.45)); }
+  .destino { font-size: 28px; line-height: 28px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="mapa"></div>
+<script src="leaflet.js"></script>
+<script>
+  // Centro de Monterrey, N.L. Java controla todo desde aqui via WebEngine.executeScript;
+  // el mapa NO abre conexiones propias: las posiciones llegan por el WebSocket de la app Java.
+  var mapa = L.map('mapa', { zoomControl: true }).setView([25.6866, -100.3161], 13);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+  }).addTo(mapa);
+
+  var rutaPlan = null, recorrido = null, camion = null, meta = null;
+
+  function limpiar() {
+    [rutaPlan, recorrido, camion, meta].forEach(function (c) { if (c) mapa.removeLayer(c); });
+    rutaPlan = recorrido = camion = meta = null;
+    mapa.setView([25.6866, -100.3161], 13);
+  }
+
+  function setRuta(puntos, destino) {
+    limpiar();
+    rutaPlan = L.polyline(puntos, { color: '#8a8f98', weight: 4, dashArray: '8 8', opacity: .8 }).addTo(mapa);
+    recorrido = L.polyline([], { color: '#1f6feb', weight: 6, opacity: .95 }).addTo(mapa);
+    meta = L.marker(puntos[puntos.length - 1], { icon: L.divIcon({ className: 'destino', html: '🏠', iconSize: [28, 28], iconAnchor: [14, 26] }) })
+      .bindTooltip(destino || 'Destino').addTo(mapa);
+    camion = L.marker(puntos[0], { icon: L.divIcon({ className: 'camion', html: '🚚', iconSize: [30, 30], iconAnchor: [15, 15] }), zIndexOffset: 1000 }).addTo(mapa);
+    mapa.fitBounds(rutaPlan.getBounds(), { padding: [40, 40] });
+  }
+
+  // Agrega el punto a la ruta recorrida y mueve el vehiculo, sin recargar nada.
+  function mover(lat, lng, enRuta) {
+    if (!camion) return;
+    var p = [lat, lng];
+    camion.setLatLng(p);
+    if (enRuta) recorrido.addLatLng(p);
+    if (!mapa.getBounds().contains(p)) mapa.panTo(p);
+  }
+</script>
+</body>
+</html>

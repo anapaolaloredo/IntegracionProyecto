@@ -1,0 +1,22 @@
+.root { -fx-font-family: "System"; -fx-font-size: 13px; -fx-base: #f6f4ef; }
+.barra { -fx-background-color: #1d2b3a; }
+.barra .label { -fx-text-fill: white; }
+.marca { -fx-font-size: 20px; -fx-font-weight: bold; }
+.login-fondo { -fx-background-color: linear-gradient(to bottom right, #1d2b3a, #3b5b7a); }
+.login-card { -fx-background-color: white; -fx-background-radius: 14; -fx-effect: dropshadow(gaussian, rgba(0,0,0,.35), 24, 0, 0, 6); }
+.login-titulo { -fx-font-size: 30px; -fx-font-weight: bold; -fx-text-fill: #1d2b3a; }
+.login-sub { -fx-text-fill: #6b7280; }
+.estado { -fx-text-fill: #6b7280; }
+.tarjeta { -fx-background-color: white; -fx-background-radius: 10; -fx-border-color: #e5e1d8; -fx-border-radius: 10; }
+.tarjeta-titulo { -fx-font-weight: bold; -fx-font-size: 14px; }
+.sin-portada { -fx-background-color: #e6e2d8; -fx-text-fill: #6b7280; -fx-alignment: center; -fx-text-alignment: center; }
+.precio { -fx-font-weight: bold; -fx-text-fill: #1f6feb; -fx-font-size: 15px; }
+.ok { -fx-text-fill: #1a7f37; } .agotado { -fx-text-fill: #cf222e; }
+.detalle-titulo { -fx-font-size: 20px; -fx-font-weight: bold; }
+.fila { -fx-background-color: white; -fx-padding: 8; -fx-background-radius: 8; }
+.total { -fx-font-size: 18px; -fx-font-weight: bold; }
+.primario { -fx-background-color: #1f6feb; -fx-text-fill: white; -fx-font-weight: bold; }
+.estado-grande { -fx-font-size: 20px; -fx-font-weight: bold; -fx-text-fill: #1d2b3a; }
+.etapa { -fx-text-fill: #9ca3af; }
+.etapa-hecha { -fx-text-fill: #1a7f37; }
+.etapa-actual { -fx-text-fill: #1f6feb; -fx-font-weight: bold; }
