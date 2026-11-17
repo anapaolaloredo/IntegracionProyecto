@@ -46,6 +46,11 @@ public class RastreoView extends BorderPane {
             }
         });
         motor.load(getClass().getResource("/mapa/mapa.html").toExternalForm());
+        // Leaflet debe recalcular su tamano cada vez que el panel cambia o la pestana se muestra.
+        web.widthProperty().addListener((o, a, n) -> ejecutar("mapa.invalidateSize()"));
+        web.heightProperty().addListener((o, a, n) -> ejecutar("mapa.invalidateSize()"));
+        sceneProperty().addListener((o, a, n) -> { if (n != null) ejecutar("mapa.invalidateSize()"); });
+        visibleProperty().addListener((o, a, v) -> { if (v) ejecutar("mapa.invalidateSize()"); });
 
         codigo.setPromptText("LIB-MTY-2026-000125");
         codigo.setPrefColumnCount(22);

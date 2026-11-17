@@ -104,4 +104,13 @@ class NucleoTest {
         assertEquals("ws://mi.dominio:5006/ws/rastreo", Endpoints.desdeTexto("mi.dominio").rastreoWs());
         assertThrows(IllegalArgumentException.class, () -> Endpoints.desdeTexto("  "));
     }
+
+    @Test void endpointsEnModoGateway() {
+        Endpoints g = Endpoints.desdeTexto("34.1.2.3", true);
+        assertEquals("http://34.1.2.3/api/auth", g.login());
+        assertEquals("http://34.1.2.3", g.libros());
+        assertEquals("http://34.1.2.3", g.pedidos());
+        assertEquals("http://34.1.2.3", g.pagos());
+        assertEquals("ws://34.1.2.3/ws/rastreo", g.rastreoWs());
+    }
 }

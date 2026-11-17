@@ -15,7 +15,13 @@
 <script>
   // Centro de Monterrey, N.L. Java controla todo desde aqui via WebEngine.executeScript;
   // el mapa NO abre conexiones propias: las posiciones llegan por el WebSocket de la app Java.
-  var mapa = L.map('mapa', { zoomControl: true }).setView([25.6866, -100.3161], 13);
+  // El WebKit del WebView de JavaFX es antiguo: con transformaciones 3D y animaciones los mosaicos
+  // quedan descolocados. Se fuerza posicionamiento clasico y se apagan las animaciones.
+  L.Browser.any3d = false;
+  var mapa = L.map('mapa', {
+    zoomControl: true, zoomAnimation: false, fadeAnimation: false, markerZoomAnimation: false, inertia: false
+  }).setView([25.6866, -100.3161], 13);
+  window.addEventListener('resize', function () { mapa.invalidateSize(); });
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
   }).addTo(mapa);
@@ -29,6 +35,7 @@
   }
 
   function setRuta(puntos, destino) {
+    mapa.invalidateSize();
     limpiar();
     rutaPlan = L.polyline(puntos, { color: '#8a8f98', weight: 4, dashArray: '8 8', opacity: .8 }).addTo(mapa);
     recorrido = L.polyline([], { color: '#1f6feb', weight: 6, opacity: .95 }).addTo(mapa);

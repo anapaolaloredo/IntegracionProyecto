@@ -16,6 +16,7 @@ public class LoginView {
     private final Runnable alExpirar;
     private final VBox raiz = new VBox(12);
     private final TextField host = new TextField();
+    private final CheckBox gateway = new CheckBox("El servidor usa el gateway NGINX (puerto 80)");
     private final TextField correo = new TextField();
     private final PasswordField clave = new PasswordField();
     private final TextField codigo = new TextField();
@@ -46,7 +47,7 @@ public class LoginView {
         continuar.setOnAction(e -> paso1());
         verificar.setOnAction(e -> paso2());
         codigo.setOnAction(e -> paso2());
-        raiz.getChildren().addAll(titulo, sub, new Label("Servidor"), host, new Label("Cuenta"), correo, clave,
+        raiz.getChildren().addAll(titulo, sub, new Label("Servidor"), host, gateway, new Label("Cuenta"), correo, clave,
                 continuar, codigo, verificar, estado);
         raiz.setAlignment(Pos.CENTER_LEFT);
         raiz.setPadding(new Insets(32));
@@ -63,7 +64,7 @@ public class LoginView {
 
     private void paso1() {
         try {
-            Endpoints ep = Endpoints.desdeTexto(host.getText());
+            Endpoints ep = Endpoints.desdeTexto(host.getText(), gateway.isSelected());
             if (correo.getText().isBlank() || clave.getText().isEmpty()) throw new IllegalArgumentException("Escribe correo y contraseña.");
             ctx = new Contexto(new Http(ep), alExpirar);
         } catch (IllegalArgumentException e) {

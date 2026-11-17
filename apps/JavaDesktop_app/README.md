@@ -22,6 +22,11 @@ JAVA_HOME=$(/usr/libexec/java_home -v 21) mvn javafx:run      # pruebas: mvn tes
 ```
 En el login se escribe la **IP o dominio** de la instancia (cambia en cada sesión; los puertos son fijos), el correo y la contraseña.
 
+## Modo gateway (opcional)
+Si en la instancia se instala el NGINX de `deploy/nginx/` (`./instalar_nginx.sh`), todo queda bajo el puerto 80 y en el login se marca
+**"El servidor usa el gateway NGINX"**. Rutas: `/api/auth/*` (login), `/api/libros`, `/api/users`, `/api/authors`, `/api/pedidos`,
+`/api/pagos` y `ws://<IP>/ws/rastreo`. Sin marcar la casilla, la app usa un puerto por servicio como antes.
+
 ## Servidor de rastreo (en la instancia de GCP)
 ```bash
 cd apps/JavaDesktop_app/tracking_server
