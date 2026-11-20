@@ -436,7 +436,7 @@ class MainWindow(QMainWindow):
         clientes = {"login": self.c.http_login, "books": self.c.http_libros, "users": self.c.http_users,
                     "authors": self.c.http_authors, "pedidos": self.c.http_pedidos, "pagos": self.c.http_pagos}
         nombres = {clave: nombre for clave, nombre, _ in SERVICIOS}
-        ejecutar(lambda: {clave: comprobar_servicio(http, nombres[clave]) for clave, http in clientes.items()},
+        ejecutar(lambda: {clave: comprobar_servicio(http, nombres[clave], self.c.config.ruta_salud(clave)) for clave, http in clientes.items()},
                  self._salud_ok, self._salud_error)
 
     def _salud_ok(self, resultados):

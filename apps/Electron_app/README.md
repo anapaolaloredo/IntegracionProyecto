@@ -29,8 +29,10 @@ npm start
 
 Al abrir la app:
 
-1. En "URL base del microservicio" escribe la URL del servidor en la nube,
-   por ejemplo `http://34.10.20.30:5001`.
+1. En "URL base (reverse proxy NGINX)" escribe la IP o dominio de la instancia
+   **sin puerto**, por ejemplo `http://34.10.20.30`: NGINX (puerto 80) enruta
+   `/api/libros/...` al microservicio de libros (ver `deploy/nginx/conf.d/01_reverse_proxy.conf`).
+   Sin gateway tambien funciona la URL directa `http://34.10.20.30:5001`.
 2. En "Endpoint" deja `/api/libros/catalogo` (valor por defecto) o cambialo
    si el microservicio expone otra ruta.
 3. Pulsa "Cargar catalogo". La URL y el endpoint quedan guardados

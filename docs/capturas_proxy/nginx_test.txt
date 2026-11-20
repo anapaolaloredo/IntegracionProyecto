@@ -1,0 +1,3 @@
+# nginx -t sobre los 3 archivos de deploy/nginx/
+nginx: the configuration file <tmp>/real.conf syntax is ok
+nginx: configuration file <tmp>/real.conf test is successful

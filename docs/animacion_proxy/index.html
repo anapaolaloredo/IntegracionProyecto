@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proxy, API Gateway y Balanceador</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="top">
+  <h1>Proxy, API Gateway y Balanceador de carga</h1>
+  <p class="lead">Animación paso a paso de cómo viaja cada paquete. Elige un tipo, elige un escenario y usa
+    <b>▶ / ⏸</b>, <b>Paso</b> y la velocidad para verlo con calma. Los ejemplos de NGINX son los de este proyecto
+    (<code>deploy/nginx/</code>).</p>
+</header>
+
+<nav id="tabs" class="tabs" aria-label="Tipo de proxy"></nav>
+
+<main>
+  <section class="card intro" id="intro"></section>
+
+  <section class="card stagecard">
+    <div class="toolbar">
+      <div id="scenarios" class="chips" aria-label="Escenarios"></div>
+      <div id="options" class="options"></div>
+    </div>
+
+    <div class="controls">
+      <button id="btnPlay" class="primary" type="button">⏸ Pausar</button>
+      <button id="btnStep" type="button">⏭ Paso</button>
+      <button id="btnReset" type="button">↺ Reiniciar</button>
+      <label class="speed">Velocidad
+        <input id="speed" type="range" min="0.25" max="3" step="0.25" value="1">
+        <output id="speedOut">1×</output>
+      </label>
+      <label class="check"><input id="loop" type="checkbox"> Repetir</label>
+    </div>
+
+    <div class="legend" aria-label="Colores de los paquetes">
+      <span><i class="dot req"></i>Petición</span>
+      <span><i class="dot res"></i>Respuesta</span>
+      <span><i class="dot err"></i>Error / rechazo</span>
+      <span><i class="dot tcp"></i>TCP / TLS (bytes)</span>
+      <span><i class="dot ws"></i>WebSocket</span>
+      <span><i class="dot health"></i>Health check</span>
+      <span><i class="dot ctl"></i>Decisión interna</span>
+    </div>
+
+    <div class="canvas"><svg id="stage" viewBox="0 0 1000 470" role="img" aria-label="Diagrama animado"></svg></div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2>¿Qué está pasando?</h2>
+      <div id="narr" class="narr"></div>
+      <h3>Contenido del paquete</h3>
+      <pre id="inspector" class="mono box"></pre>
+    </div>
+    <div class="card">
+      <h2>Pasos del escenario</h2>
+      <ol id="timeline" class="timeline"></ol>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="card">
+      <h2>Registro de tráfico</h2>
+      <div id="log" class="log mono" aria-live="off"></div>
+    </div>
+    <div class="card">
+      <h2 id="codeTitle">Configuración</h2>
+      <pre id="code" class="mono code"></pre>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Conceptos clave</h2>
+    <div id="concepts" class="concepts"></div>
+  </section>
+
+  <section class="card">
+    <h2>Comparativa</h2>
+    <div class="tablewrap"><table id="cmp" class="cmp"></table></div>
+  </section>
+</main>
+<footer class="foot">Animación didáctica del proyecto de integración · sin dependencias externas.</footer>
+<script src="scenes.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

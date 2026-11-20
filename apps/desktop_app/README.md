@@ -45,6 +45,11 @@ las **seis URLs** y los tiempos. Se guardan fuera del codigo, en:
 Puertos: login `5000`, libros `5001`, users `5002`, authors `5003`, pedidos `5004`, pagos `5005`.
 Para la instancia: `http://<IP_EXTERNA>:<puerto>`.
 
+**Con reverse proxy NGINX** (`deploy/nginx/conf.d/01_reverse_proxy.conf`): en Configuracion marca
+"Usar el reverse proxy NGINX" y escribe solo la IP/dominio. Las seis URLs se derivan
+solas (login -> `http://<IP>/api/auth`, el resto -> `http://<IP>`) y el semaforo
+consulta `/health/<servicio>` por el gateway. Solo se necesita abrir el puerto 80.
+
 **Protocolo (radio http / https).** Por defecto `http`. Al elegir `https` se reescribe
 el esquema de las seis URLs (host y puerto no cambian); al volver a `http` se
 regresan. `https` solo funciona cuando el servidor (o un proxy) tiene certificado.

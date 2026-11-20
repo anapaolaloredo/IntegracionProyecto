@@ -8,6 +8,7 @@ La variable LIBRERIA_CONFIG_DIR permite usar otra carpeta (pruebas)."""
 
 import json
 import os
+import re
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -24,9 +25,14 @@ SERVICIOS = (
     ("pagos", "Pagos", 5005),
 )
 
+# Nombre de cada servicio en /health/<nombre> del gateway NGINX (deploy/nginx/conf.d/01_reverse_proxy.conf)
+SLUGS_GATEWAY = {"login": "login", "books": "libros", "users": "users",
+                 "authors": "authors", "pedidos": "pedidos", "pagos": "pagos"}
+
 DEFAULTS = {
     **{f"{clave}_url": f"http://localhost:{puerto}" for clave, _, puerto in SERVICIOS},
     "protocolo": "http",
+    "gateway": False,
     "timeout": 5,
     "health_interval": 30,
 }
@@ -79,6 +85,7 @@ class AppConfig:
     pedidos_url: str = DEFAULTS["pedidos_url"]
     pagos_url: str = DEFAULTS["pagos_url"]
     protocolo: str = DEFAULTS["protocolo"]
+    gateway: bool = DEFAULTS["gateway"]
     timeout: int = DEFAULTS["timeout"]
     health_interval: int = DEFAULTS["health_interval"]
 
@@ -110,6 +117,26 @@ class AppConfig:
         nuevas = {f"{clave}_url": cambiar_esquema(self.url(clave), protocolo) for clave, _, _ in SERVICIOS}
         return replace(self, protocolo=protocolo, **nuevas)
 
+    @classmethod
+    def desde_gateway(cls, host, protocolo="http", **resto):
+        """Todo por NGINX (puerto 80): login en /api/auth y el resto en la raiz del host."""
+        host = re.sub(r"^(?i:https?)://", "", (host or "").strip())
+        host = re.split(r"[/:]", host)[0]
+        base = f"{protocolo}://{host}"
+        urls = {f"{clave}_url": base for clave, _, _ in SERVICIOS}
+        urls["login_url"] = base + "/api/auth"
+        return cls(**urls, protocolo=protocolo, gateway=True, **resto)
+
+    def host_gateway(self):
+        return urlparse(self.books_url).hostname or ""
+
+    def ruta_salud(self, clave):
+        """Ruta del /health de un servicio: directa, o /health/<servicio> a traves del gateway.
+        Login cuelga de /api/auth, asi que su /health ya llega como /api/auth/health."""
+        if self.gateway and clave != "login":
+            return f"/health/{SLUGS_GATEWAY[clave]}"
+        return "/health"
+
     def validar(self):
         """Lista de errores legibles; vacia si la configuracion es valida."""
         errores = []
@@ -117,6 +144,8 @@ class AppConfig:
             error = validar_url(self.url(clave))
             if error:
                 errores.append(f"URL de {nombre}: {error}.")
+        if not isinstance(self.gateway, bool):
+            errores.append("El modo gateway debe ser verdadero o falso.")
         if self.protocolo not in ("http", "https"):
             errores.append("El protocolo debe ser http o https.")
         if not isinstance(self.timeout, int) or not 1 <= self.timeout <= 60:

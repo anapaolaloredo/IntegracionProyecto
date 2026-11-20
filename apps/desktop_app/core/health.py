@@ -28,9 +28,9 @@ def _ahora():
     return datetime.now()
 
 
-def comprobar_servicio(http, nombre):
+def comprobar_servicio(http, nombre, ruta="/health"):
     try:
-        resp = http.request("GET", "/health", params={"format": "json"})
+        resp = http.request("GET", ruta, params={"format": "json"})
     except ServiceError as exc:
         return EstadoServicio(CAIDO, str(exc), _ahora())
     try:

@@ -47,3 +47,24 @@ def test_config_vieja_sin_claves_nuevas_carga_con_defaults(tmp_path):
                                           '"timeout": 5, "health_interval": 30}')
     c = AppConfig.load()
     assert c.login_url == "http://h:5000" and c.users_url == "http://localhost:5002" and c.protocolo == "http"
+
+
+def test_gateway_deriva_las_seis_urls_de_un_host():
+    c = AppConfig.desde_gateway("http://34.10.20.30:5000/x")
+    assert c.gateway and c.host_gateway() == "34.10.20.30"
+    assert c.url("login") == "http://34.10.20.30/api/auth"
+    assert all(c.url(k) == "http://34.10.20.30" for k in ("books", "users", "authors", "pedidos", "pagos"))
+    assert not c.validar()
+
+
+def test_ruta_salud_directa_y_por_gateway():
+    assert AppConfig.defaults().ruta_salud("books") == "/health"
+    g = AppConfig.desde_gateway("h")
+    assert g.ruta_salud("books") == "/health/libros"
+    assert g.ruta_salud("login") == "/health"  # base /api/auth + /health
+
+
+def test_gateway_se_guarda_y_se_carga():
+    AppConfig.desde_gateway("h", "https").save()
+    c = AppConfig.load()
+    assert c.gateway and c.url("login") == "https://h/api/auth"

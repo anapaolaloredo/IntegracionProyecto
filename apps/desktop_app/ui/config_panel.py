@@ -2,7 +2,7 @@
 probar, guardar y restaurar."""
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import (QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton,
+from PySide6.QtWidgets import (QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPushButton, QRadioButton, QCheckBox,
                                QSpinBox, QVBoxLayout, QWidget)
 
 from core.config import SERVICIOS, AppConfig, cambiar_esquema, config_dir, normalizar_url, validar_url
@@ -50,6 +50,17 @@ class ConfigPanel(QWidget):
         caja_proto = QGroupBox("Protocolo de conexión")
         caja_proto.setLayout(capa_proto)
 
+        self.chk_gateway = QCheckBox("Usar el reverse proxy NGINX (un solo host, puerto 80)")
+        self.host_gateway = QLineEdit()
+        self.host_gateway.setPlaceholderText("IP o dominio de la instancia, p. ej. 34.10.20.30")
+        self.chk_gateway.toggled.connect(self._gateway_cambio)
+        self.host_gateway.textChanged.connect(self._host_cambio)
+        capa_gw = QVBoxLayout()
+        capa_gw.addWidget(self.chk_gateway)
+        capa_gw.addWidget(self.host_gateway)
+        caja_gw = QGroupBox("Gateway")
+        caja_gw.setLayout(capa_gw)
+
         self.timeout = QSpinBox(minimum=1, maximum=60, suffix=" s")
         self.intervalo = QSpinBox(minimum=5, maximum=3600, suffix=" s")
         form.addRow("Tiempo de espera por petición:", self.timeout)
@@ -74,6 +85,7 @@ class ConfigPanel(QWidget):
 
         capa = QVBoxLayout(self)
         capa.addWidget(caja_proto)
+        capa.addWidget(caja_gw)
         capa.addLayout(form)
         capa.addLayout(botones)
         capa.addWidget(self.mensaje)
@@ -100,9 +112,30 @@ class ConfigPanel(QWidget):
             if url and not validar_url(url):
                 campo.setText(cambiar_esquema(url, esquema))
 
+    def _gateway_cambio(self, activo):
+        for campo in self.campos.values():
+            campo.setEnabled(not activo)
+        self.host_gateway.setEnabled(activo)
+        if activo:
+            self._host_cambio()
+
+    def _host_cambio(self, *_):
+        """Con el gateway activo las seis URLs se derivan del host (login en /api/auth)."""
+        if not self.chk_gateway.isChecked():
+            return
+        base = AppConfig.desde_gateway(self.host_gateway.text(),
+                                       "https" if self.radio_https.isChecked() else "http")
+        for clave, campo in self.campos.items():
+            campo.setText(base.url(clave))
+
     def cargar(self, config):
         for clave, campo in self.campos.items():
             campo.setText(config.url(clave))
+        self.chk_gateway.blockSignals(True)
+        self.chk_gateway.setChecked(config.gateway)
+        self.chk_gateway.blockSignals(False)
+        self.host_gateway.setText(config.host_gateway() if config.gateway else "")
+        self._gateway_cambio(config.gateway)
         self.radio_https.blockSignals(True)  # cargar no debe reescribir las URLs guardadas
         (self.radio_https if config.protocolo == "https" else self.radio_http).setChecked(True)
         self.radio_https.blockSignals(False)
@@ -110,6 +143,10 @@ class ConfigPanel(QWidget):
         self.intervalo.setValue(config.health_interval)
 
     def _desde_formulario(self):
+        if self.chk_gateway.isChecked():
+            return AppConfig.desde_gateway(self.host_gateway.text(),
+                                           "https" if self.radio_https.isChecked() else "http",
+                                           timeout=self.timeout.value(), health_interval=self.intervalo.value())
         urls = {f"{clave}_url": normalizar_url(campo.text()) for clave, campo in self.campos.items()}
         return AppConfig(**urls, protocolo="https" if self.radio_https.isChecked() else "http",
                          timeout=self.timeout.value(), health_interval=self.intervalo.value())
@@ -124,7 +161,7 @@ class ConfigPanel(QWidget):
         poner_mensaje(self.mensaje, "Probando con los valores del formulario (aún sin guardar)…")
         clientes = [(clave, nombre, HttpClient(nombre, config.url(clave), config.timeout, self.on_log))
                     for clave, nombre, _ in SERVICIOS]
-        ejecutar(lambda: [comprobar_servicio(http, nombre) for _, nombre, http in clientes],
+        ejecutar(lambda: [comprobar_servicio(http, nombre, config.ruta_salud(clave)) for clave, nombre, http in clientes],
                  lambda resultados: self._resultado_prueba([c for c, _, _ in clientes], resultados),
                  self._fallo_prueba)
 

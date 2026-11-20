@@ -1,0 +1,13 @@
+# access.log de NGINX durante las capturas (prueba local: NGINX con deploy/nginx/ en el puerto 80, servicios simulados)
+# User-Agent de cada cliente: Java-http-client = app Java · node/- = app Electron · python-requests = app PythonTk
+
+127.0.0.1 - - [20/Nov/2026:16:18:58 -0600] "GET /api/auth/health?format=json HTTP/1.1" 200 90 "-" "python-requests/2.34.2"
+127.0.0.1 - - [20/Nov/2026:16:18:58 -0600] "GET /health/libros?format=json HTTP/1.1" 200 79 "-" "python-requests/2.34.2"
+127.0.0.1 - - [20/Nov/2026:16:18:58 -0600] "GET /health/users?format=json HTTP/1.1" 200 78 "-" "python-requests/2.34.2"
+127.0.0.1 - - [20/Nov/2026:16:18:58 -0600] "GET /health/authors?format=json HTTP/1.1" 200 80 "-" "python-requests/2.34.2"
+127.0.0.1 - - [20/Nov/2026:16:18:58 -0600] "GET /health/pedidos?format=json HTTP/1.1" 200 80 "-" "python-requests/2.34.2"
+127.0.0.1 - - [20/Nov/2026:16:18:58 -0600] "GET /health/pagos?format=json HTTP/1.1" 200 78 "-" "python-requests/2.34.2"
+127.0.0.1 - - [20/Nov/2026:16:40:51 -0600] "GET /api/libros/catalogo HTTP/1.1" 200 1933 "-" "-"
+127.0.0.1 - - [20/Nov/2026:16:41:41 -0600] "GET /api/libros/catalogo HTTP/1.1" 200 1933 "-" "-"
+127.0.0.1 - - [20/Nov/2026:16:42:45 -0600] "GET /api/libros/catalogo HTTP/1.1" 200 1933 "-" "-"
+127.0.0.1 - - [20/Nov/2026:16:43:37 -0600] "POST /api/auth/login?format=json HTTP/1.1" 200 89 "-" "Java-http-client/21.0.12"

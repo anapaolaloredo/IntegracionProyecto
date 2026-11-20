@@ -3,3 +3,8 @@ node_modules/
 __pycache__/
 *.pyc
 .venv/
+
+# Certificados y llaves privadas (nunca a git)
+*.key
+*.pem
+deploy/nginx/ssl/

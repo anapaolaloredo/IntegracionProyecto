@@ -1,0 +1,25 @@
+Evidencia NGINX en 3 archivos - 2026-11-20 16:18 (prueba local, puertos de prueba 8088/25001; servicios simulados)
+
+### 1) REVERSE PROXY :8088 (01_reverse_proxy.conf)
+GET /library/          -> {"servicio": "monolito", "ruta": "/library/", "db": "ok", "redis": "ok"}
+GET /api/books         -> {"servicio": "libros", "ruta": "/api/libros", "db": "ok", "redis": "ok"}
+GET /api/books/book    -> {"servicio": "libros", "ruta": "/api/libros/book", "db": "ok", "redis": "ok"}
+GET /api/books?x=1     -> {"servicio": "libros", "ruta": "/api/libros?x=1", "db": "ok", "redis": "ok"}
+GET /api/libros/book   -> {"servicio": "libros", "ruta": "/api/libros/book", "db": "ok", "redis": "ok"}
+
+### 2) PORT FORWARD TCP :25001 -> 5001 (02_port_forward.conf)
+{"servicio": "libros", "ruta": "/health", "db": "ok", "redis": "ok"}
+
+### 3) WEBSOCKET EXCLUSIVO :8090 (03_websocket.conf)
+handshake WS en /ws/rastreo : HTTP/1.1 101 Switching Protocols
+HTTP normal a /ws/rastreo    : 426
+otra ruta (/api/libros)      : 404
+API en :8088 no sirve WS     : 200 (la ruta /ws/ cae al monolito)
+== Electron: misma resolucion de URL que main.js (baseUrl sin puerto + endpoint)
+http://127.0.0.1/api/libros/catalogo -> 200 {"servicio": "libros", "ruta": "/api/libros/catalogo", "db": "ok", "redis": "ok"}
+== Java (mvn test, modo gateway):
+[INFO] Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+== WS puerto 8090 con la config real:
+HTTP/1.1 101 Switching Protocols
+== Port forward :15001:
+{"servicio": "libros", "ruta": "/health", "db": "ok", "redis": "ok"}

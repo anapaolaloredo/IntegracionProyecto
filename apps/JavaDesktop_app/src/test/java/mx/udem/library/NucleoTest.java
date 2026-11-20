@@ -111,6 +111,6 @@ class NucleoTest {
         assertEquals("http://34.1.2.3", g.libros());
         assertEquals("http://34.1.2.3", g.pedidos());
         assertEquals("http://34.1.2.3", g.pagos());
-        assertEquals("ws://34.1.2.3/ws/rastreo", g.rastreoWs());
+        assertEquals("ws://34.1.2.3:8090/ws/rastreo", g.rastreoWs());
     }
 }
